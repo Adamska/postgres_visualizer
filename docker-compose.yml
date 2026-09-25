@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: tablepp-test-postgres
+    environment:
+      POSTGRES_USER: tablepp
+      POSTGRES_PASSWORD: tablepp
+      POSTGRES_DB: tablepp
+    ports:
+      - "54329:5432"
+    volumes:
+      - ./Scripts/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tablepp -d tablepp"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

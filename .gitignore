@@ -1,0 +1,18 @@
+# Xcode
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+*.xcworkspace/xcshareddata/swiftpm/
+
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved.bak
+
+# macOS
+.DS_Store
+
+# Scratch
+/tmp/
