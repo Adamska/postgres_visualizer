@@ -42,7 +42,8 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 panic = "abort"
-strip = true
+# `strip = true` breaks proc-macro dylibs on recent macOS (mis-aligned LINKEDIT); Tauri's bundler strips the final binary.
+strip = false
 
 [lints.rust]
 unsafe_code = "forbid"

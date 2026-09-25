@@ -21,6 +21,7 @@ export default defineConfig({
     target: "safari16",
     minify: process.env.TAURI_ENV_DEBUG ? false : "esbuild",
     sourcemap: Boolean(process.env.TAURI_ENV_DEBUG),
+    chunkSizeWarningLimit: 2500,
   },
   resolve: {
     alias: { "@": new URL("./src", import.meta.url).pathname },

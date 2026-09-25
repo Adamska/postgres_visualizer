@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Front end
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format
+      - run: pnpm test
+      - run: pnpm build
+
+  backend:
+    name: Rust backend
+    runs-on: macos-15
+    services: {}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Start PostgreSQL
+        run: |
+          brew install postgresql@17
+          brew services start postgresql@17
+          sleep 5
+          /opt/homebrew/opt/postgresql@17/bin/createuser -s tablepp || true
+          /opt/homebrew/opt/postgresql@17/bin/psql -d postgres -c "ALTER USER tablepp PASSWORD 'tablepp'"
+          /opt/homebrew/opt/postgresql@17/bin/createdb -O tablepp tablepp
+          /opt/homebrew/opt/postgresql@17/bin/psql -U tablepp -d tablepp -v ON_ERROR_STOP=1 -f Scripts/seed.sql
+      - run: cargo fmt --check
+        working-directory: src-tauri
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri
+        env:
+          TABLEPP_TEST_DATABASE_URL: postgres://tablepp:tablepp@localhost:5432/tablepp

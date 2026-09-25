@@ -34,8 +34,9 @@ export function isRightAligned(kind: ValueKind): boolean {
   return kind === "integer" || kind === "decimal";
 }
 
+/** Kinds whose values are usually multi-line or structured, edited in the large editor. */
 export function prefersLargeEditor(kind: ValueKind): boolean {
-  return kind === "json" || kind === "text" || kind === "array" || kind === "composite";
+  return kind === "json" || kind === "array" || kind === "composite";
 }
 
 const numberFormat = new Intl.NumberFormat("en-US");
