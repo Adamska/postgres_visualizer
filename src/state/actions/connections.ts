@@ -2,6 +2,7 @@
 
 import { tableKey } from "@/core/completion/engine";
 import { backend } from "@/lib/backend";
+import { withoutKey } from "@/lib/records";
 import { toAppError, type ConnectionProfile, type TableRef, type TableStructure } from "@/lib/types";
 
 import { getState, mutate, mutateConnection, pushToast, type ConnectionState } from "../store";
@@ -72,11 +73,11 @@ export async function connect(profile: ConnectionProfile): Promise<boolean> {
   } catch (error) {
     const message = toAppError(error).message;
     mutate((draft) => {
-      const { [profile.id]: _removed, ...rest } = draft.connections;
-      draft.connections = rest;
+      draft.connections = withoutKey(draft.connections, profile.id);
       draft.connectionOrder = draft.connectionOrder.filter((id) => id !== profile.id);
-      if (draft.activeConnectionId === profile.id)
+      if (draft.activeConnectionId === profile.id) {
         draft.activeConnectionId = draft.connectionOrder[0] ?? null;
+      }
     });
     pushToast({ tone: "error", title: `Could not connect to ${profile.name || profile.host}`, message });
     return false;
@@ -94,18 +95,19 @@ export async function disconnect(id: string): Promise<void> {
         .catch(() => undefined);
     }
   }
-  if (connection?.sessionId)
+  if (connection?.sessionId) {
     await backend()
       .disconnect(connection.sessionId)
       .catch(() => undefined);
+  }
   mutate((draft) => {
     draft.tabs = draft.tabs.filter((t) => t.connectionId !== id);
-    const { [id]: _removed, ...rest } = draft.connections;
-    draft.connections = rest;
+    draft.connections = withoutKey(draft.connections, id);
     draft.connectionOrder = draft.connectionOrder.filter((c) => c !== id);
     if (draft.activeConnectionId === id) draft.activeConnectionId = draft.connectionOrder[0] ?? null;
-    if (!draft.tabs.some((t) => t.id === draft.activeTabId))
+    if (!draft.tabs.some((t) => t.id === draft.activeTabId)) {
       draft.activeTabId = draft.tabs.at(-1)?.id ?? null;
+    }
   });
   persistWorkspace();
 }
@@ -140,8 +142,13 @@ export async function refreshSchemas(id: string): Promise<void> {
 /** Loads the relations and functions of a schema on first expansion. */
 export async function loadSchemaObjects(id: string, schema: string): Promise<void> {
   const connection = getState().connections[id];
-  if (!connection?.sessionId || schema in connection.relations || connection.loadingSchemas.includes(schema))
+  if (
+    !connection?.sessionId ||
+    schema in connection.relations ||
+    connection.loadingSchemas.includes(schema)
+  ) {
     return;
+  }
   const sessionId = connection.sessionId;
   mutateConnection(id, (c) => {
     c.loadingSchemas.push(schema);

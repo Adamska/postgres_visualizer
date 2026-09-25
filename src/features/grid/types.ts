@@ -1,7 +1,8 @@
 // Contract between the data grid component and the models that feed it.
 
-import type { CellValue, ValueKind } from "@/lib/types";
 import type { EditValue } from "@/core/changes/changeSet";
+import type { JsonSegment } from "@/core/json/preview";
+import type { CellValue, ValueKind } from "@/lib/types";
 
 /** One column of the grid. `id` is the column index in the underlying result set. */
 export interface GridColumn {
@@ -29,6 +30,8 @@ export interface GridCell {
   isNull: boolean;
   isModified: boolean;
   isDefault: boolean;
+  /** Coloured single-line preview when the value is JSON; `null` for plain values. */
+  json: JsonSegment[] | null;
 }
 
 export interface GridRow {
@@ -66,7 +69,7 @@ export interface GridActions {
   onSortRequest?: (column: GridColumn) => void;
   /** Inline edit finished, or "Set NULL"/"Set DEFAULT" chosen. */
   onCommitEdit?: (position: GridCellPosition, value: EditValue) => void;
-  /** The user asked for the large editor (multi-line or JSON values). */
+  /** The user asked for the large editor or viewer (multi-line or JSON values). */
   onOpenEditor?: (position: GridCellPosition) => void;
   onDeleteRows?: (rows: number[]) => void;
   onFollowForeignKey?: (position: GridCellPosition) => void;

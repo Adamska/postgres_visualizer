@@ -163,7 +163,7 @@ export function mutateTab<T extends Tab["kind"]>(
 ): void {
   mutate((draft) => {
     const tab = draft.tabs.find((t) => t.id === id);
-    if (tab && tab.kind === kind) recipe(tab as Extract<Tab, { kind: T }>);
+    if (tab?.kind === kind) recipe(tab as Extract<Tab, { kind: T }>);
   });
 }
 

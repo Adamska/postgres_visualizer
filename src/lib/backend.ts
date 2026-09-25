@@ -55,7 +55,7 @@ export function backend(): Backend {
 }
 
 /** Replaces the backend, for tests and previews. Returns a restore function. */
-export function useBackend(replacement: Backend): () => void {
+export function installBackend(replacement: Backend): () => void {
   const previous = current;
   current = replacement;
   return () => {

@@ -118,7 +118,13 @@ export const USERS_RESULT: QueryResult = {
     kind: c.kind,
   })),
   rows: [
-    ["1", "ann@example.com", "true", '{"theme": "dark"}', "1"],
+    [
+      "1",
+      "ann@example.com",
+      "true",
+      '{"theme": "dark", "notifications": {"email": true, "push": false, "digest": "weekly"}, "tags": ["admin", "beta"], "score": 42.5, "bio": null}',
+      "1",
+    ],
     ["2", "bob@example.com", "false", null, null],
     ["3", "cy@example.com", "true", "[]", "1"],
   ],
@@ -171,14 +177,15 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     connect: (params) => {
       if (options.connectError) return Promise.reject(options.connectError);
       if (params.password === "wrong") {
-        return Promise.reject({
+        const error: AppError = {
           kind: "authentication",
           message: "password authentication failed",
           detail: null,
           hint: null,
           sqlState: "28P01",
           position: null,
-        } satisfies AppError);
+        };
+        return Promise.reject(error);
       }
       counter += 1;
       const id = `session-${counter}`;
@@ -232,16 +239,18 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     listFunctions: (_s, schema) => Promise.resolve(functions.filter((f) => f.schema === schema)),
     tableStructure: (_s, schema, name) => {
       if (schema === "public" && name === "users") return Promise.resolve(USERS_STRUCTURE);
-      if (schema === "public" && name === "active_users")
+      if (schema === "public" && name === "active_users") {
         return Promise.resolve({ ...USERS_STRUCTURE, name: "active_users", kind: "view", foreignKeys: [] });
-      return Promise.reject({
+      }
+      const error: AppError = {
         kind: "server",
         message: `relation "${name}" does not exist`,
         detail: null,
         hint: null,
         sqlState: "42P01",
         position: null,
-      } satisfies AppError);
+      };
+      return Promise.reject(error);
     },
     loadDocument: <T>(name: string) => Promise.resolve((mock.documents[name] as T | undefined) ?? null),
     saveDocument: (name, value) => {
@@ -250,8 +259,13 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     },
     getPassword: (profileId) => Promise.resolve(mock.passwords[profileId] ?? null),
     setPassword: (profileId, password) => {
-      if (password === null) delete mock.passwords[profileId];
-      else mock.passwords[profileId] = password;
+      if (password === null) {
+        mock.passwords = Object.fromEntries(
+          Object.entries(mock.passwords).filter(([id]) => id !== profileId),
+        );
+      } else {
+        mock.passwords[profileId] = password;
+      }
       return Promise.resolve();
     },
   };

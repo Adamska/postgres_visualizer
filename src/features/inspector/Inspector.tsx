@@ -1,7 +1,7 @@
 // Right-hand panel listing every column of the focused row.
 
-import { Copy, MoreHorizontal, PanelRightClose, ScanSearch } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Braces, Copy, MoreHorizontal, PanelRightClose, ScanSearch } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/Primitives";
 import { IconButton } from "@/components/ui/Button";
@@ -10,6 +10,8 @@ import { DropdownMenu, type MenuItem } from "@/components/ui/Menu";
 import type { EditValue } from "@/core/changes/changeSet";
 import { exportJson } from "@/core/exchange/export";
 import { detailText, prefersLargeEditor } from "@/core/format/values";
+import { jsonValueOf } from "@/core/json/tree";
+import { JsonViewer } from "@/features/json/JsonViewer";
 import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/files";
 import type { CellValue, ResultColumn, ValueKind } from "@/lib/types";
@@ -156,8 +158,10 @@ function FieldRow({
   const isNull = value === null;
   const isDefault = value === undefined;
   const [draft, setDraft] = useState(value ?? "");
+  const [showRaw, setShowRaw] = useState(false);
   useEffect(() => setDraft(value ?? ""), [value]);
-  const inline = editable && !prefersLargeEditor(kind) && !(value ?? "").includes("\n");
+  const json = useMemo(() => jsonValueOf(value, kind), [value, kind]);
+  const inline = editable && json === undefined && !prefersLargeEditor(kind) && !(value ?? "").includes("\n");
   const commit = () => {
     if (draft !== (value ?? "") || (isNull && draft !== "")) onCommit({ kind: "text", value: draft });
   };
@@ -172,6 +176,17 @@ function FieldRow({
         <span className="text-[11.5px] font-semibold text-fg-muted">{column.name}</span>
         <span className="truncate font-mono text-[10.5px] text-fg-subtle">{typeName}</span>
         <span className="flex-1" />
+        {json !== undefined && (
+          <IconButton
+            label={showRaw ? "Show as tree" : "Show raw JSON"}
+            size="sm"
+            active={!showRaw}
+            className={cn("size-6", !editable && "-mr-2")}
+            onClick={() => setShowRaw((current) => !current)}
+          >
+            <Braces className="size-3.5" />
+          </IconButton>
+        )}
         {editable && (
           <DropdownMenu
             trigger={
@@ -184,7 +199,14 @@ function FieldRow({
           />
         )}
       </div>
-      {inline ? (
+      {json !== undefined && !showRaw ? (
+        <div
+          onDoubleClick={() => editable && onOpenEditor()}
+          className="max-h-72 overflow-auto rounded-md bg-surface-sunken px-1 py-1"
+        >
+          <JsonViewer value={json} columnName={column.name} dense />
+        </div>
+      ) : inline ? (
         <Input
           value={draft}
           placeholder={isDefault ? "DEFAULT" : "NULL"}

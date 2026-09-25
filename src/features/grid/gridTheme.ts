@@ -16,6 +16,10 @@ export interface GridPalette {
   successSoft: string;
   fontSans: string;
   fontMono: string;
+  syntaxKey: string;
+  syntaxString: string;
+  syntaxNumber: string;
+  syntaxBoolean: string;
 }
 
 /** A realised grid theme: Glide's theme plus the palette used for per-cell overrides. */
@@ -41,6 +45,10 @@ const FALLBACKS: Record<string, string> = {
   "--warning-soft": "rgb(224 138 30 / 0.16)",
   "--font-sans": "-apple-system, BlinkMacSystemFont, sans-serif",
   "--font-mono": "Menlo, monospace",
+  "--syntax-key": "#3d3d45",
+  "--syntax-string": "#1a7f4b",
+  "--syntax-number": "#1d5bd6",
+  "--syntax-boolean": "#8b3fc7",
 };
 
 /** Reads one custom property from `<html>`, falling back to the light-theme value. */
@@ -60,6 +68,10 @@ export function buildGridTheme(token: (name: string) => string, fontSize: number
     successSoft: token("--success-soft"),
     fontSans: token("--font-sans"),
     fontMono: token("--font-mono"),
+    syntaxKey: token("--syntax-key"),
+    syntaxString: token("--syntax-string"),
+    syntaxNumber: token("--syntax-number"),
+    syntaxBoolean: token("--syntax-boolean"),
   };
   const theme: Partial<Theme> = {
     accentColor: token("--accent"),

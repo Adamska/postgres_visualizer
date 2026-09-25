@@ -8,7 +8,7 @@ import { Sidebar } from "@/features/sidebar/Sidebar";
 import { Workspace } from "@/features/workspace/Workspace";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTheme } from "@/hooks/useTheme";
-import { useBackend } from "@/lib/backend";
+import { installBackend } from "@/lib/backend";
 import { isTauri } from "@/lib/platform";
 import { startApp } from "@/state/actions/app";
 import { useAppStore } from "@/state/store";
@@ -19,7 +19,7 @@ if (!isTauri()) {
   const { installPreviewData } = await import("@/test/previewData");
   const mock = createMockBackend();
   installPreviewData(mock);
-  useBackend(mock);
+  installBackend(mock);
 }
 
 export function App() {

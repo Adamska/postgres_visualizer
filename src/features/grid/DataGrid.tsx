@@ -26,6 +26,7 @@ import {
   BASE_FONT_SIZE,
   HEADER_HEIGHT,
   ROW_MARKER_WIDTH,
+  activationFor,
   canSetNull,
   cellDisplayText,
   cellStyle,
@@ -41,6 +42,7 @@ import {
   visibleColumns,
 } from "./gridModel";
 import { buildCellThemes, buildRowThemes, useGridTheme } from "./gridTheme";
+import { isJsonGridCell, jsonCellRenderer, type JsonGridCell } from "./jsonCell";
 import type { DataGridProps, GridSelection } from "./types";
 
 const EMPTY_SELECTION: GlideSelection = { columns: CompactSelection.empty(), rows: CompactSelection.empty() };
@@ -65,6 +67,7 @@ export function DataGrid({
   const { theme, palette } = useGridTheme(fontSize);
   const cellThemes = useMemo(() => buildCellThemes(palette, fontSize), [palette, fontSize]);
   const rowThemes = useMemo(() => buildRowThemes(palette), [palette]);
+  const customRenderers = useMemo(() => [jsonCellRenderer(palette)], [palette]);
   const visible = useMemo(
     () => visibleColumns(content.columns, hiddenColumnIds),
     [content.columns, hiddenColumnIds],
@@ -106,6 +109,17 @@ export function DataGrid({
       }
       const mode = editModeFor(entry.column, gridRow, readOnly);
       const style = cellStyle(cell, gridRow.state);
+      if (cell.json && cell.raw !== null && cell.raw !== undefined) {
+        const jsonCell: JsonGridCell = {
+          kind: GridCellKind.Custom,
+          data: { kind: "json-preview", raw: cell.raw, segments: cell.json },
+          copyData: cell.raw,
+          allowOverlay: false,
+          readonly: mode === "none",
+          themeOverride: cellThemes[style],
+        };
+        return jsonCell;
+      }
       return {
         kind: GridCellKind.Text,
         data: cell.raw ?? "",
@@ -149,10 +163,14 @@ export function DataGrid({
   const onCellEdited = useCallback(
     ([col, row]: Item, newValue: EditableGridCell) => {
       const entry = visible[col];
-      if (!entry || newValue.kind !== GridCellKind.Text) return;
+      if (!entry) return;
+      let value: string;
+      if (newValue.kind === GridCellKind.Text) value = newValue.data;
+      else if (newValue.kind === GridCellKind.Custom && isJsonGridCell(newValue)) value = newValue.data.raw;
+      else return;
       const previous = content.rows[row]?.cells[entry.index];
-      if (previous && (previous.raw ?? "") === newValue.data) return;
-      actions?.onCommitEdit?.({ row, column: entry.index }, { kind: "text", value: newValue.data });
+      if (previous && (previous.raw ?? "") === value) return;
+      actions?.onCommitEdit?.({ row, column: entry.index }, { kind: "text", value });
     },
     [visible, content, actions],
   );
@@ -162,9 +180,8 @@ export function DataGrid({
       const entry = visible[col];
       const gridRow = content.rows[row];
       if (!entry || !gridRow) return;
-      if (editModeFor(entry.column, gridRow, readOnly) === "large") {
-        actions?.onOpenEditor?.({ row, column: entry.index });
-      }
+      const mode = activationFor(entry.column, gridRow, gridRow.cells[entry.index], readOnly);
+      if (mode === "large" || mode === "view") actions?.onOpenEditor?.({ row, column: entry.index });
     },
     [visible, content, readOnly, actions],
   );
@@ -208,7 +225,7 @@ export function DataGrid({
       if (
         event.key === "Enter" &&
         !event.shiftKey &&
-        editModeFor(entry.column, gridRow, readOnly) !== "none"
+        activationFor(entry.column, gridRow, gridRow.cells[entry.index], readOnly) !== "none"
       ) {
         event.cancel();
         actions?.onOpenEditor?.(position);
@@ -334,6 +351,7 @@ export function DataGrid({
           gridSelection={selection}
           onGridSelectionChange={onGridSelectionChange}
           getCellsForSelection
+          customRenderers={customRenderers}
           rowMarkers={{ kind: "number", width: ROW_MARKER_WIDTH }}
           rowHeight={rowHeightFor(fontSize)}
           headerHeight={HEADER_HEIGHT}

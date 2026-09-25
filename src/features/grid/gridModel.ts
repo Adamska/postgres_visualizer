@@ -86,7 +86,7 @@ export function gridColumnOf(visible: readonly VisibleColumn[], contentIndex: nu
 
 /** Header text with the sort indicator appended when the column is sorted. */
 export function headerTitle(column: GridColumn, sort: GridSortState | null | undefined): string {
-  if (sort && sort.columnId === column.id) return `${column.name} ${sort.ascending ? "↑" : "↓"}`;
+  if (sort?.columnId === column.id) return `${column.name} ${sort.ascending ? "↑" : "↓"}`;
   return column.name;
 }
 
@@ -135,6 +135,21 @@ export function editModeFor(column: GridColumn, row: GridRow | undefined, readOn
   if (readOnly || !column.isEditable || row === undefined || row.state === "deleted") return "none";
   const hasEnum = column.enumValues !== null && column.enumValues.length > 0;
   return prefersLargeEditor(column.kind) || hasEnum ? "large" : "inline";
+}
+
+/** What activating a cell (double-click, Enter) does; read-only JSON cells still open the viewer. */
+export type ActivationMode = EditMode | "view";
+
+export function activationFor(
+  column: GridColumn,
+  row: GridRow | undefined,
+  cell: GridCell | undefined,
+  readOnly: boolean,
+): ActivationMode {
+  const mode = editModeFor(column, row, readOnly);
+  if (mode === "inline" && cell?.json) return "large";
+  if (mode === "none" && cell?.json && row?.state !== "deleted") return "view";
+  return mode;
 }
 
 export function canSetNull(column: GridColumn, row: GridRow | undefined, readOnly: boolean): boolean {

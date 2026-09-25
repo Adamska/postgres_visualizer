@@ -28,6 +28,15 @@ export default tseslint.config(
       ],
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
       "@typescript-eslint/no-confusing-void-expression": ["error", { ignoreArrowShorthand: true }],
+      // AppError is the plain-object error contract shared with the Rust side.
+      "@typescript-eslint/only-throw-error": [
+        "error",
+        { allow: [{ from: "file", name: "AppError", path: "src/lib/types.ts" }] },
+      ],
+      "@typescript-eslint/prefer-promise-reject-errors": [
+        "error",
+        { allow: [{ from: "file", name: "AppError", path: "src/lib/types.ts" }] },
+      ],
       "no-console": ["error", { allow: ["warn", "error"] }],
       eqeqeq: ["error", "always"],
       curly: ["error", "multi-line"],
@@ -38,4 +47,12 @@ export default tseslint.config(
     rules: { "@typescript-eslint/no-non-null-assertion": "off", "@typescript-eslint/unbound-method": "off" },
   },
   { files: ["eslint.config.js", "vite.config.ts"], ...tseslint.configs.disableTypeChecked },
+  {
+    files: ["Scripts/**/*.mjs"],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      ...tseslint.configs.disableTypeChecked.languageOptions,
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
 );

@@ -27,6 +27,23 @@ await settle(1500);
 await page.getByRole("tab").first().click();
 await settle();
 await shot("table-tab");
+
+// JSON: focus the `profile` cell of the first row, open the inspector, then the value viewer.
+const grid = await page.getByTestId("data-grid").boundingBox();
+const jsonCell = { x: grid.x + 44 + 90 + 160 + 108 + 80, y: grid.y + 32 + 14 };
+await page.mouse.click(jsonCell.x, jsonCell.y);
+await page.keyboard.press("Alt+Meta+i");
+await settle();
+await shot("inspector-json");
+await page.mouse.dblclick(jsonCell.x, jsonCell.y);
+await settle();
+await shot("value-viewer-json");
+await page.getByRole("button", { name: "Text" }).click();
+await settle(300);
+await shot("value-editor-json-text");
+await page.keyboard.press("Escape");
+await page.keyboard.press("Alt+Meta+i");
+await settle(300);
 await page.getByRole("tab").nth(1).click();
 await settle(900);
 await shot("query-tab");
@@ -38,6 +55,11 @@ await shot("query-tab-dark");
 await page.getByRole("tab").first().click();
 await settle();
 await shot("table-tab-dark");
+await page.mouse.click(jsonCell.x, jsonCell.y);
+await page.keyboard.press("Alt+Meta+i");
+await page.mouse.dblclick(jsonCell.x, jsonCell.y);
+await settle();
+await shot("value-viewer-json-dark");
 
 await browser.close();
 await server.close();

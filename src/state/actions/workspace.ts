@@ -168,10 +168,11 @@ export function selectTabByNumber(number: number): void {
 export async function closeTab(id: string): Promise<void> {
   const tab = getState().tabs.find((t) => t.id === id);
   if (!tab) return;
-  if (tab.kind === "query" && tab.sessionId)
+  if (tab.kind === "query" && tab.sessionId) {
     await backend()
       .disconnect(tab.sessionId)
       .catch(() => undefined);
+  }
   mutate((draft) => {
     const index = draft.tabs.findIndex((t) => t.id === id);
     if (index === -1) return;
@@ -202,13 +203,14 @@ export function moveTab(id: string, toIndex: number): void {
 
 /** Whether closing the tab would lose staged edits or an open transaction. */
 export function tabHasUnsavedWork(tab: Tab): boolean {
-  if (tab.kind === "table")
+  if (tab.kind === "table") {
     return (
       Object.keys(tab.changes.updates).length +
         tab.changes.inserts.length +
         Object.keys(tab.changes.deletes).length >
       0
     );
+  }
   if (tab.kind === "query") return tab.inTransaction;
   return false;
 }

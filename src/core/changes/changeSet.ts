@@ -3,6 +3,7 @@
 import type { CellValue, TableStructure } from "@/lib/types";
 
 import { qualifiedName, quoteIdent, renderLiteral } from "../sql/quote";
+import { withoutKey } from "@/lib/records";
 
 /** A value staged for a cell: text, SQL NULL, or the server default. */
 export type EditValue = { kind: "text"; value: string } | { kind: "null" } | { kind: "default" };
@@ -113,9 +114,9 @@ export function setValue(
   original: CellValue,
 ): ChangeSet {
   const entry = changes.updates[identity.key];
-  const columns = without(entry?.columns ?? {}, column);
+  const columns = withoutKey(entry?.columns ?? {}, column);
   if (!sameEdit(value, editFromCell(original))) columns[column] = value;
-  const updates = without(changes.updates, identity.key);
+  const updates = withoutKey(changes.updates, identity.key);
   if (Object.keys(columns).length > 0) updates[identity.key] = { identity, columns };
   return { ...changes, updates };
 }
@@ -130,20 +131,16 @@ export function stagedValue(
 
 export function toggleDelete(changes: ChangeSet, identity: RowIdentity): ChangeSet {
   if (identity.key in changes.deletes) {
-    return { ...changes, deletes: without(changes.deletes, identity.key) };
+    return { ...changes, deletes: withoutKey(changes.deletes, identity.key) };
   }
   return {
     ...changes,
     deletes: { ...changes.deletes, [identity.key]: identity },
-    updates: without(changes.updates, identity.key),
+    updates: withoutKey(changes.updates, identity.key),
   };
 }
 
 /** Shallow copy of a record without one key. */
-function without<T>(record: Record<string, T>, key: string): Record<string, T> {
-  return Object.fromEntries(Object.entries(record).filter(([k]) => k !== key));
-}
-
 export function isDeleted(changes: ChangeSet, identity: RowIdentity): boolean {
   return identity.key in changes.deletes;
 }

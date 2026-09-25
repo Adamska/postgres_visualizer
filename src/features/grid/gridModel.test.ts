@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { buildGridTheme, readToken } from "./gridTheme";
+import { layoutSegments, segmentColor } from "./jsonCell";
 import {
+  activationFor,
   cellCopyText,
   cellDisplayText,
   cellStyle,
@@ -41,17 +43,17 @@ const content: GridContent = {
   rows: [
     {
       cells: [
-        { text: "1", raw: "1", isNull: false, isModified: false, isDefault: false },
-        { text: "Ann", raw: "Ann", isNull: false, isModified: true, isDefault: false },
-        { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false },
+        { text: "1", raw: "1", isNull: false, isModified: false, isDefault: false, json: null },
+        { text: "Ann", raw: "Ann", isNull: false, isModified: true, isDefault: false, json: null },
+        { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false, json: null },
       ],
       state: "normal",
     },
     {
       cells: [
-        { text: "2", raw: "2", isNull: false, isModified: false, isDefault: false },
-        { text: "Bob", raw: "Bob", isNull: false, isModified: false, isDefault: false },
-        { text: "{}", raw: "{}", isNull: false, isModified: false, isDefault: false },
+        { text: "2", raw: "2", isNull: false, isModified: false, isDefault: false, json: null },
+        { text: "Bob", raw: "Bob", isNull: false, isModified: false, isDefault: false, json: null },
+        { text: "{}", raw: "{}", isNull: false, isModified: false, isDefault: false, json: null },
       ],
       state: "deleted",
     },
@@ -125,5 +127,48 @@ describe("grid model", () => {
     expect(theme.bgCell).toBe("#ffffff");
     expect(palette.fg).toBe("#1c1c1e");
     expect(theme.baseFontStyle).toBe("13px");
+  });
+});
+
+describe("json cells", () => {
+  const jsonCell = {
+    text: "{ a: 1 }",
+    raw: '{"a":1}',
+    isNull: false,
+    isModified: false,
+    isDefault: false,
+    json: [{ kind: "punct" as const, text: "{ a: 1 }" }],
+  };
+  const plainCell = content.rows[1]!.cells[1]!;
+
+  it("opens the viewer for JSON cells that cannot be edited", () => {
+    expect(activationFor(content.columns[1]!, content.rows[0], jsonCell, true)).toBe("view");
+    expect(activationFor(content.columns[1]!, content.rows[0], plainCell, true)).toBe("none");
+    expect(activationFor(content.columns[1]!, content.rows[0], jsonCell, false)).toBe("large");
+    expect(activationFor(content.columns[1]!, content.rows[0], plainCell, false)).toBe("inline");
+    expect(activationFor(content.columns[1]!, content.rows[1], jsonCell, false)).toBe("none");
+  });
+
+  it("lays segments out and cuts the overflow with an ellipsis", () => {
+    const measure = (text: string) => text.length * 10;
+    const segments = [
+      { kind: "punct" as const, text: "{ " },
+      { kind: "key" as const, text: "name" },
+      { kind: "punct" as const, text: ": " },
+      { kind: "string" as const, text: '"Ann"' },
+      { kind: "punct" as const, text: " }" },
+    ];
+    expect(layoutSegments(segments, measure, 1000).map((s) => s.x)).toEqual([0, 20, 60, 80, 130]);
+    const cut = layoutSegments(segments, measure, 100);
+    expect(cut.map((s) => s.text)).toEqual(["{ ", "name", ": ", '"', "…"]);
+    expect(cut.at(-1)?.x).toBe(90);
+    expect(layoutSegments(segments, measure, 15).map((s) => s.text)).toEqual(["…"]);
+  });
+
+  it("colours segments from the palette", () => {
+    const { palette } = buildGridTheme((name) => readToken(name), 13);
+    expect(segmentColor("string", palette, palette.fg)).toBe("#1a7f4b");
+    expect(segmentColor("punct", palette, palette.fg)).toBe(palette.fgMuted);
+    expect(segmentColor("punct", palette, "#999")).toBe("#999");
   });
 });

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { newProfile } from "@/core/connection/url";
-import { useBackend } from "@/lib/backend";
+import { installBackend } from "@/lib/backend";
 import { createMockBackend, USERS, type MockBackend } from "@/test/mockBackend";
 
 import { startApp } from "./actions/app";
@@ -48,7 +48,7 @@ let restore: () => void;
 beforeEach(() => {
   resetStore();
   backend = createMockBackend();
-  restore = useBackend(backend);
+  restore = installBackend(backend);
 });
 
 afterEach(() => {
@@ -185,7 +185,7 @@ describe("table tab", () => {
     const tab = findTab(tabId, "table")!;
     expect(foreignKeyTarget(tab, 0, 4)).toEqual({
       table: { schema: "public", name: "teams" },
-      filter: expect.objectContaining({ column: "id", value: "1" }),
+      filter: expect.objectContaining({ column: "id", value: "1" }) as unknown,
     });
     expect(foreignKeyTarget(tab, 1, 4)).toBeNull();
     await sortBy(tabId, "email");
@@ -268,7 +268,7 @@ describe("query tab", () => {
         position: 1,
       },
     });
-    restore = useBackend(backend);
+    restore = installBackend(backend);
     const profile = await connected();
     const tabId = openQuery(profile.id, "selec 1;\nselect 2")!;
     await runQuery(tabId, "all");

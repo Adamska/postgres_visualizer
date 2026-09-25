@@ -21,6 +21,10 @@
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-syntax-key: var(--syntax-key);
+  --color-syntax-string: var(--syntax-string);
+  --color-syntax-number: var(--syntax-number);
+  --color-syntax-boolean: var(--syntax-boolean);
 
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -52,6 +56,10 @@
   --warning: #e08a1e;
   --warning-soft: rgb(224 138 30 / 0.16);
   --sidebar-bg: rgb(245 245 247 / 0.72);
+  --syntax-key: #3d3d45;
+  --syntax-string: #1a7f4b;
+  --syntax-number: #1d5bd6;
+  --syntax-boolean: #8b3fc7;
 }
 
 :root[data-theme="dark"] {
@@ -75,4 +83,8 @@
   --warning: #f0a53a;
   --warning-soft: rgb(240 165 58 / 0.18);
   --sidebar-bg: rgb(22 22 24 / 0.72);
+  --syntax-key: #d6d6de;
+  --syntax-string: #6fcf97;
+  --syntax-number: #7ea4ff;
+  --syntax-boolean: #c58af9;
 }

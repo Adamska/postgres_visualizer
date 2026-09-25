@@ -1,7 +1,8 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { ColorDot, PROFILE_COLORS } from "@/components/Primitives";
+import { ColorDot } from "@/components/Primitives";
+import { PROFILE_COLORS } from "@/lib/colors";
 import { Button, Spinner } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Controls";
 import { Field, Input } from "@/components/ui/Input";

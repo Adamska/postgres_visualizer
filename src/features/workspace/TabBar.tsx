@@ -3,9 +3,7 @@ import { ListTree, Plus, Table2, Terminal, X } from "lucide-react";
 import { ColorDot } from "@/components/Primitives";
 import { IconButton } from "@/components/ui/Button";
 import { ContextMenu, type MenuItem } from "@/components/ui/Menu";
-import { displayName } from "@/core/sql/quote";
 import { cn } from "@/lib/cn";
-import { queryTitle } from "@/state/actions/queryTab";
 import {
   closeOtherTabs,
   closeTab,
@@ -16,16 +14,7 @@ import {
 } from "@/state/actions/workspace";
 import { openDialog, useAppStore, type Tab } from "@/state/store";
 
-export function tabTitle(tab: Tab): string {
-  switch (tab.kind) {
-    case "table":
-      return displayName(tab.query.table);
-    case "structure":
-      return displayName(tab.table);
-    case "query":
-      return queryTitle(tab);
-  }
-}
+import { tabTitle } from "./tabTitle";
 
 export function TabBar() {
   const tabs = useAppStore((s) => s.tabs);

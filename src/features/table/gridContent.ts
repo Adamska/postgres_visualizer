@@ -2,6 +2,8 @@
 
 import { isTableEditable, rowIdentity, type ChangeSet, type EditValue } from "@/core/changes/changeSet";
 import { gridText } from "@/core/format/values";
+import { previewSegments, segmentsText, type JsonSegment } from "@/core/json/preview";
+import { jsonValueOf } from "@/core/json/tree";
 import type { GridCell, GridColumn, GridContent, GridRow } from "@/features/grid/types";
 import type { CellValue, QueryResult, TableStructure } from "@/lib/types";
 
@@ -25,30 +27,46 @@ export function gridColumns(result: QueryResult, structure: TableStructure | nul
   });
 }
 
-function plainCell(value: CellValue, kind: GridColumn["kind"]): GridCell {
+/** Preview segments when the value gets the JSON treatment for this column kind. */
+function jsonPreview(value: CellValue, kind: GridColumn["kind"]): JsonSegment[] | null {
+  const parsed = jsonValueOf(value, kind);
+  return parsed === undefined ? null : previewSegments(parsed);
+}
+
+function valueCell(value: string, kind: GridColumn["kind"], isModified: boolean): GridCell {
+  const json = jsonPreview(value, kind);
   return {
-    text: gridText(value, kind),
+    text: json ? gridText(segmentsText(json), kind) : gridText(value, kind),
     raw: value,
-    isNull: value === null,
-    isModified: false,
+    isNull: false,
+    isModified,
     isDefault: false,
+    json,
   };
+}
+
+function plainCell(value: CellValue, kind: GridColumn["kind"]): GridCell {
+  if (value === null) {
+    return { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false, json: null };
+  }
+  return valueCell(value, kind, false);
 }
 
 function editedCell(edit: EditValue, kind: GridColumn["kind"]): GridCell {
   switch (edit.kind) {
     case "text":
+      return valueCell(edit.value, kind, true);
+    case "null":
+      return { text: "NULL", raw: null, isNull: true, isModified: true, isDefault: false, json: null };
+    case "default":
       return {
-        text: gridText(edit.value, kind),
-        raw: edit.value,
+        text: "DEFAULT",
+        raw: undefined,
         isNull: false,
         isModified: true,
-        isDefault: false,
+        isDefault: true,
+        json: null,
       };
-    case "null":
-      return { text: "NULL", raw: null, isNull: true, isModified: true, isDefault: false };
-    case "default":
-      return { text: "DEFAULT", raw: undefined, isNull: false, isModified: true, isDefault: true };
   }
 }
 
@@ -79,9 +97,16 @@ export function editableRows(result: QueryResult, structure: TableStructure, cha
       if (edit) return editedCell(edit, column.kind);
       const info = structure.columns.find((c) => c.name === column.name);
       if (info && (info.defaultValue !== null || info.isIdentity || info.isGenerated)) {
-        return { text: "DEFAULT", raw: undefined, isNull: false, isModified: false, isDefault: true };
+        return {
+          text: "DEFAULT",
+          raw: undefined,
+          isNull: false,
+          isModified: false,
+          isDefault: true,
+          json: null,
+        };
       }
-      return { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false };
+      return { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false, json: null };
     });
     rows.push({ cells, state: "inserted" });
   }

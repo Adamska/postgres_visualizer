@@ -69,9 +69,9 @@ export function useShortcuts(): void {
             return true;
           }
           if (key === "s") {
-            if (useSettings.getState().settings.confirmBeforeCommit)
+            if (useSettings.getState().settings.confirmBeforeCommit) {
               openDialog({ kind: "commit", tabId: active.id });
-            else void commitChanges(active.id);
+            } else void commitChanges(active.id);
             return true;
           }
           if (key === "z" && event.altKey) {

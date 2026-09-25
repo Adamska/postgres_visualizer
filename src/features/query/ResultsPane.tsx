@@ -10,7 +10,7 @@ import type { GridActions } from "@/features/grid/types";
 import { buildGridContent } from "@/features/table/gridContent";
 import { selectResult } from "@/state/actions/queryTab";
 import { useSettings } from "@/state/settings";
-import { mutateTab, type QueryTab } from "@/state/store";
+import { mutateTab, openDialog, type QueryTab } from "@/state/store";
 
 export function ResultsPane({ tab }: { tab: QueryTab }) {
   const fontSize = useSettings((s) => s.settings.gridFontSize);
@@ -27,6 +27,8 @@ export function ResultsPane({ tab }: { tab: QueryTab }) {
         mutateTab(tab.id, "query", (t) => {
           t.gridSelection = selection;
         }),
+      onOpenEditor: (position) =>
+        openDialog({ kind: "valueEditor", tabId: tab.id, row: position.row, column: position.column }),
       onToggleColumnVisibility: (columnId) =>
         mutateTab(tab.id, "query", (t) => {
           t.hiddenColumnIds = t.hiddenColumnIds.includes(columnId)
@@ -36,8 +38,7 @@ export function ResultsPane({ tab }: { tab: QueryTab }) {
     }),
     [tab.id],
   );
-  const isPlan =
-    result !== undefined && result.columns.length === 1 && result.columns[0]?.name === "QUERY PLAN";
+  const isPlan = result?.columns.length === 1 && result.columns[0]?.name === "QUERY PLAN";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

@@ -271,8 +271,13 @@ export function duplicateRows(tabId: string, rows: number[]): void {
     for (const row of rows) {
       const values: Record<string, EditValue> = {};
       structure.columns.forEach((column) => {
-        if (column.isGenerated || column.isIdentity || (column.isPrimaryKey && column.defaultValue !== null))
+        if (
+          column.isGenerated ||
+          column.isIdentity ||
+          (column.isPrimaryKey && column.defaultValue !== null)
+        ) {
           return;
+        }
         const index = columns.findIndex((c) => c.name === column.name);
         if (index === -1) return;
         const value = cellValue(tab, row, index);

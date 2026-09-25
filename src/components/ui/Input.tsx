@@ -52,7 +52,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
       spellCheck={false}
       className={cn(
         inputClass,
-        "h-auto min-h-24 resize-none py-2 leading-relaxed",
+        "min-h-24 resize-none py-2 leading-relaxed",
         mono && "font-mono text-[12.5px]",
         className,
       )}

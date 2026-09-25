@@ -150,8 +150,9 @@ async function execute(tabId: string, statements: Statement[]): Promise<void> {
         mutateTab(tabId, "query", (t) => {
           t.error = failure;
           t.errorMarker = marker;
-          if (inTransaction && failure?.kind === "server")
+          if (inTransaction && failure?.kind === "server") {
             t.status = "Transaction aborted. Run ROLLBACK to continue.";
+          }
         });
         break;
       }
@@ -208,10 +209,11 @@ function trackTransaction(tabId: string, sql: string): void {
 
 async function resetSession(tabId: string): Promise<void> {
   const tab = findTab(tabId, "query");
-  if (tab?.sessionId)
+  if (tab?.sessionId) {
     await backend()
       .disconnect(tab.sessionId)
       .catch(() => undefined);
+  }
   mutateTab(tabId, "query", (t) => {
     t.sessionId = null;
     t.inTransaction = false;
