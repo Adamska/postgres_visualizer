@@ -75,7 +75,9 @@ struct SnapshotTests {
         let tab = model.openStructure(MockDatabase.users, on: connection)
         if case .structure(let structure) = tab.content { await structure.load() }
         try render(MainWindowView().environment(model), name: "structure-tab", size: CGSize(width: 1_280, height: 760), settle: 1)
-        let profile = ConnectionProfile(name: "Supabase", host: "db.abc.supabase.co", database: "postgres", username: "postgres", sslMode: .require, color: .green)
+        let profile = ConnectionProfile(
+            name: "Supabase", host: "db.abc.supabase.co", database: "postgres", username: "postgres", sslMode: .require, color: .green
+        )
         let form = ConnectionFormView(profile: profile, password: "secret", isNew: true)
             .environment(model)
         try render(form, name: "connection-form", size: CGSize(width: 520, height: 590), settle: 0.5)
