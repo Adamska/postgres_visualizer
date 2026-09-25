@@ -54,9 +54,7 @@ enum ValueFormatting {
 
     /// Formats an estimated count such as `12.4k rows`.
     static func rowCount(_ count: Int, estimated: Bool = false) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        let number = formatter.string(from: NSNumber(value: count)) ?? "\(count)"
+        let number = count.formatted(.number.locale(Locale(identifier: "en_US")))
         return (estimated ? "~" : "") + number + (count == 1 ? " row" : " rows")
     }
 

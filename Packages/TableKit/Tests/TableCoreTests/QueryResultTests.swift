@@ -6,9 +6,10 @@ import Testing
 struct QueryResultTests {
     @Test("Summaries describe rows, affected counts and timings")
     func summaries() {
-        let select = QueryResult(statement: "select", columns: [ResultColumn(name: "a", index: 0)], rows: [[.text("1")]], duration: .milliseconds(12))
+        let column = ResultColumn(name: "a", index: 0)
+        let select = QueryResult(statement: "select", columns: [column], rows: [[.text("1")]], duration: .milliseconds(12))
         #expect(select.summary == "1 row in 12 ms")
-        let limited = QueryResult(statement: "select", columns: [ResultColumn(name: "a", index: 0)], rows: [[.null], [.null]], duration: .microseconds(300), isTruncated: true)
+        let limited = QueryResult(statement: "select", columns: [column], rows: [[.null], [.null]], duration: .microseconds(300), isTruncated: true)
         #expect(limited.summary == "2 rows (limited) in 0.30 ms")
         let update = QueryResult(statement: "update", commandTag: "UPDATE 3", affectedRows: 3, duration: .milliseconds(2))
         #expect(update.summary == "UPDATE 3 · 3 affected in 2 ms")
@@ -18,7 +19,8 @@ struct QueryResultTests {
 
     @Test("Looks values up by column name")
     func lookup() {
-        let result = QueryResult(statement: "", columns: [ResultColumn(name: "a", index: 0), ResultColumn(name: "a", index: 1)], rows: [[.text("x"), .text("y")]])
+        let columns = [ResultColumn(name: "a", index: 0), ResultColumn(name: "a", index: 1)]
+        let result = QueryResult(statement: "", columns: columns, rows: [[.text("x"), .text("y")]])
         #expect(result.columnIndex(named: "a") == 0)
         #expect(result.value(row: 0, column: "a") == .text("x"))
         #expect(result.value(row: 1, column: "a") == nil)

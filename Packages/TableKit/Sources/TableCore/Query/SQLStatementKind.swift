@@ -46,7 +46,7 @@ public enum SQLStatementKind: Sendable, Hashable {
     }
 
     /// Lowercased leading keywords of a statement, skipping comments and parentheses.
-    static func leadingKeywords(of sql: String, limit: Int) -> [String] {
+    public static func leadingKeywords(of sql: String, limit: Int) -> [String] {
         var words: [String] = []
         for token in SQLTokenizer.tokenize(sql) {
             guard token.kind != .whitespace, token.kind != .comment else { continue }

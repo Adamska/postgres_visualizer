@@ -39,7 +39,8 @@ struct StorageTests {
         let store = QueryHistoryStore(directory: directory, limit: 3)
         let profileID = UUID()
         for index in 1...4 {
-            try await store.record(QueryHistoryEntry(profileID: profileID, sql: "select \(index)", duration: .milliseconds(1), succeeded: true))
+            let entry = QueryHistoryEntry(profileID: profileID, sql: "select \(index)", duration: .milliseconds(1), succeeded: true)
+            try await store.record(entry)
         }
         try await store.record(QueryHistoryEntry(profileID: profileID, sql: "select 3", duration: .milliseconds(1), succeeded: false))
         let entries = try await store.entries()
@@ -65,13 +66,16 @@ struct StorageTests {
         let directory = temporaryDirectory()
         let store = WorkspaceStateStore(directory: directory)
         let profileID = UUID()
-        let snapshot = WorkspaceSnapshot(connections: [
-            ConnectionSnapshot(profileID: profileID, tabs: [
-                .table(TableQuery(table: TableRef(schema: "public", name: "users"), filters: [Filter(column: "id", op: .greaterThan, value: "1")])),
-                .structure(TableRef(schema: "public", name: "users")),
-                .query(sql: "select 1", title: "Scratch"),
-            ], selectedTabIndex: 2),
-        ], selectedProfileID: profileID)
+        let users = TableRef(schema: "public", name: "users")
+        let tabs: [TabSnapshot] = [
+            .table(TableQuery(table: users, filters: [Filter(column: "id", op: .greaterThan, value: "1")])),
+            .structure(users),
+            .query(sql: "select 1", title: "Scratch"),
+        ]
+        let snapshot = WorkspaceSnapshot(
+            connections: [ConnectionSnapshot(profileID: profileID, tabs: tabs, selectedTabIndex: 2)],
+            selectedProfileID: profileID
+        )
         try await store.save(snapshot)
         #expect(try await WorkspaceStateStore(directory: directory).load() == snapshot)
         try? FileManager.default.removeItem(at: directory)

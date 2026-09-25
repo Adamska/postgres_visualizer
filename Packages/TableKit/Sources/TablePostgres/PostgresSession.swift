@@ -10,7 +10,7 @@ public import TableCore
 /// and stop at the configured row limit; data-modification statements use the callback API
 /// so the command tag (and therefore the affected row count) is available.
 public actor PostgresSession: DatabaseSession {
-    public nonisolated let profileID: UUID
+    nonisolated public let profileID: UUID
 
     private let connection: PostgresConnection
     private let logger: Logger

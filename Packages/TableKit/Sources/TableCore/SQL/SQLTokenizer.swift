@@ -26,6 +26,7 @@ public struct SQLToken: Hashable, Sendable {
 
 /// Byte-oriented tokenizer for PostgreSQL SQL. It never fails: unknown input becomes `op` tokens.
 public enum SQLTokenizer {
+    // swiftlint:disable:next cyclomatic_complexity
     public static func tokenize(_ sql: String) -> [SQLToken] {
         var tokens: [SQLToken] = []
         let utf8 = sql.utf8
@@ -71,7 +72,7 @@ public enum SQLTokenizer {
             } else if current == UInt8(ascii: "'") {
                 index = scanQuoted(utf8, from: index, quote: UInt8(ascii: "'"), allowsBackslash: false)
                 emit(.string, from: start, to: index)
-            } else if (current == UInt8(ascii: "E") || current == UInt8(ascii: "e")), byte(at: index, offset: 1) == UInt8(ascii: "'") {
+            } else if current == UInt8(ascii: "E") || current == UInt8(ascii: "e"), byte(at: index, offset: 1) == UInt8(ascii: "'") {
                 index = scanQuoted(utf8, from: utf8.index(after: index), quote: UInt8(ascii: "'"), allowsBackslash: true)
                 emit(.string, from: start, to: index)
             } else if current == UInt8(ascii: "\"") {
@@ -168,7 +169,7 @@ public enum SQLTokenizer {
             } else if byte == UInt8(ascii: "."), !seenDot, !seenExponent {
                 seenDot = true
                 index = utf8.index(after: index)
-            } else if (byte == UInt8(ascii: "e") || byte == UInt8(ascii: "E")), !seenExponent {
+            } else if byte == UInt8(ascii: "e") || byte == UInt8(ascii: "E"), !seenExponent {
                 seenExponent = true
                 index = utf8.index(after: index)
                 if index < utf8.endIndex, utf8[index] == UInt8(ascii: "+") || utf8[index] == UInt8(ascii: "-") {

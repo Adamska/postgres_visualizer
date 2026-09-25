@@ -20,7 +20,9 @@ public struct PostgresBinaryDecoder: Sendable {
         return .text(text)
     }
 
-    /// Returns `nil` when the type cannot be decoded.
+    // swiftlint:disable function_body_length
+    /// Returns `nil` when the type cannot be decoded. The body is a flat dispatch table over
+    /// type names, which reads better than splitting it apart.
     func text(_ bytes: [UInt8], oid: UInt32) -> String? {
         guard let type = catalog.resolvingDomains(oid) else { return nil }
 
@@ -121,6 +123,7 @@ public struct PostgresBinaryDecoder: Sendable {
             return nil
         }
     }
+    // swiftlint:enable function_body_length
 
     // MARK: Helpers
 

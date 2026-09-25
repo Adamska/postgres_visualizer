@@ -45,7 +45,9 @@ struct PostgresSessionIntegrationTests {
                 for column in structure.columns {
                     let decoded = result.value(row: rowIndex, column: column.name)
                     let expected = result.value(row: rowIndex, column: column.name + "__text")
-                    #expect(Self.normalize(decoded) == Self.normalize(expected), "\(table).\(column.name) (\(column.typeName)) row \(rowIndex): \(String(describing: decoded)) vs \(String(describing: expected))")
+                    let context = "\(table).\(column.name) (\(column.typeName)) row \(rowIndex)"
+                    let comparison = "\(String(describing: decoded)) vs \(String(describing: expected))"
+                    #expect(Self.normalize(decoded) == Self.normalize(expected), "\(context): \(comparison)")
                 }
                 _ = row
             }
@@ -141,7 +143,13 @@ struct PostgresSessionIntegrationTests {
         #expect(customers.constraints.contains { $0.kind == .unique && $0.columns == ["email"] })
 
         let orders = try await session.structure(of: TableRef(schema: "public", name: "orders"))
-        #expect(orders.foreignKeys == [ForeignKeyInfo(name: "orders_customer_id_fkey", columns: ["customer_id"], referencedTable: TableRef(schema: "public", name: "customers"), referencedColumns: ["id"])])
+        let customersKey = ForeignKeyInfo(
+            name: "orders_customer_id_fkey",
+            columns: ["customer_id"],
+            referencedTable: TableRef(schema: "public", name: "customers"),
+            referencedColumns: ["id"]
+        )
+        #expect(orders.foreignKeys == [customersKey])
         #expect(orders.indexes.contains { $0.name == "orders_customer_idx" && $0.columns == ["customer_id", "placed_at"] })
         #expect(orders.constraints.contains { $0.kind == .check })
 

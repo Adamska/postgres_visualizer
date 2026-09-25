@@ -32,9 +32,13 @@ struct SQLGenerationTests {
         query.sort = [SortDescriptor(column: "name", ascending: false)]
         query.page = 2
 
+        let predicates = [
+            "\"name\"::text ILIKE '%o''b\\_\\%%'", "\"age\" > '18'", "\"deleted_at\" IS NULL",
+            "\"id\" IN ('1', '2', '3')", "(created_at > now() - interval '1 day')",
+        ]
         let expected = """
         SELECT * FROM "public"."users"
-        WHERE "name"::text ILIKE '%o''b\\_\\%%' AND "age" > '18' AND "deleted_at" IS NULL AND "id" IN ('1', '2', '3') AND (created_at > now() - interval '1 day')
+        WHERE \(predicates.joined(separator: " AND "))
         ORDER BY "name" DESC
         LIMIT 100 OFFSET 200
         """
@@ -45,7 +49,8 @@ struct SQLGenerationTests {
     @Test("Falls back to the primary key for ordering")
     func defaultOrdering() {
         let query = TableQuery(table: users)
-        #expect(query.sql(defaultOrder: ["tenant", "id"]) == "SELECT * FROM \"public\".\"users\"\nORDER BY \"tenant\" ASC, \"id\" ASC\nLIMIT 200 OFFSET 0")
+        let expected = "SELECT * FROM \"public\".\"users\"\nORDER BY \"tenant\" ASC, \"id\" ASC\nLIMIT 200 OFFSET 0"
+        #expect(query.sql(defaultOrder: ["tenant", "id"]) == expected)
         #expect(query.whereClause == nil)
         #expect(!query.hasActiveFilters)
     }

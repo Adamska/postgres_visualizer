@@ -31,7 +31,8 @@ struct CatalogParsingTests {
         ]))
         #expect(parsed.constraints.map(\.kind) == [.primaryKey, .foreignKey])
         #expect(parsed.constraints[0].columns == ["a", "b"])
-        #expect(parsed.foreignKeys == [ForeignKeyInfo(name: "fk", columns: ["a"], referencedTable: TableRef(schema: "public", name: "t"), referencedColumns: ["id"])])
+        let expected = ForeignKeyInfo(name: "fk", columns: ["a"], referencedTable: TableRef(schema: "public", name: "t"), referencedColumns: ["id"])
+        #expect(parsed.foreignKeys == [expected])
     }
 
     @Test("Parses columns using the type catalog")
@@ -47,10 +48,13 @@ struct CatalogParsingTests {
 
     @Test("Parses types with enum labels")
     func types() {
-        let parsed = CatalogQueries.parseTypes(result(
-            ["oid", "name", "schema", "shape", "category", "element_oid", "base_oid", "subtype_oid", "labels"],
-            [[.text("16400"), .text("mood"), .text("public"), .text("e"), .text("E"), .text("0"), .text("0"), .text("0"), .text("sad\(CatalogQueries.separator)happy")]]
-        ))
-        #expect(parsed == [TypeInfo(oid: 16_400, name: "mood", schema: "public", shape: .enumeration, category: "E", enumLabels: ["sad", "happy"])])
+        let columns = ["oid", "name", "schema", "shape", "category", "element_oid", "base_oid", "subtype_oid", "labels"]
+        let row: [CellValue] = [
+            .text("16400"), .text("mood"), .text("public"), .text("e"), .text("E"),
+            .text("0"), .text("0"), .text("0"), .text("sad\(CatalogQueries.separator)happy"),
+        ]
+        let parsed = CatalogQueries.parseTypes(result(columns, [row]))
+        let expected = TypeInfo(oid: 16_400, name: "mood", schema: "public", shape: .enumeration, category: "E", enumLabels: ["sad", "happy"])
+        #expect(parsed == [expected])
     }
 }

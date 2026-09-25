@@ -5,7 +5,6 @@ public import TableCore
 public enum BuiltinTypes {
     public static let catalog = TypeCatalog(types: all)
 
-    // swiftlint:disable:next function_body_length
     static let all: [TypeInfo] = {
         func base(_ oid: UInt32, _ name: String, _ category: Character, array: UInt32 = 0) -> [TypeInfo] {
             var types = [TypeInfo(oid: oid, name: name, shape: category == "P" ? .pseudo : .base, category: category)]
@@ -14,12 +13,14 @@ public enum BuiltinTypes {
             }
             return types
         }
-        func range(_ oid: UInt32, _ name: String, subtype: UInt32, array: UInt32, multi: UInt32, multiArray: UInt32) -> [TypeInfo] {
-            [
-                TypeInfo(oid: oid, name: name, shape: .range, category: "R", subtypeOID: subtype),
-                TypeInfo(oid: array, name: "_" + name, category: "A", elementOID: oid),
-                TypeInfo(oid: multi, name: name.replacingOccurrences(of: "range", with: "multirange"), shape: .multirange, category: "R", subtypeOID: oid),
-                TypeInfo(oid: multiArray, name: "_" + name.replacingOccurrences(of: "range", with: "multirange"), category: "A", elementOID: multi),
+        /// `oids` lists the range, its array, the multirange and the multirange array.
+        func range(_ name: String, subtype: UInt32, oids: [UInt32]) -> [TypeInfo] {
+            let multiName = name.replacingOccurrences(of: "range", with: "multirange")
+            return [
+                TypeInfo(oid: oids[0], name: name, shape: .range, category: "R", subtypeOID: subtype),
+                TypeInfo(oid: oids[1], name: "_" + name, category: "A", elementOID: oids[0]),
+                TypeInfo(oid: oids[2], name: multiName, shape: .multirange, category: "R", subtypeOID: oids[0]),
+                TypeInfo(oid: oids[3], name: "_" + multiName, category: "A", elementOID: oids[2]),
             ]
         }
         return [
@@ -47,12 +48,12 @@ public enum BuiltinTypes {
             base(3_802, "jsonb", "U", array: 3_807), base(4_072, "jsonpath", "U", array: 4_073),
             base(4_089, "regnamespace", "N", array: 4_090), base(4_096, "regrole", "N", array: 4_097),
             base(4_191, "regcollation", "N", array: 4_192), base(5_069, "xid8", "U", array: 271),
-            range(3_904, "int4range", subtype: 23, array: 3_905, multi: 4_451, multiArray: 6_150),
-            range(3_906, "numrange", subtype: 1_700, array: 3_907, multi: 4_532, multiArray: 6_151),
-            range(3_908, "tsrange", subtype: 1_114, array: 3_909, multi: 4_533, multiArray: 6_152),
-            range(3_910, "tstzrange", subtype: 1_184, array: 3_911, multi: 4_534, multiArray: 6_153),
-            range(3_912, "daterange", subtype: 1_082, array: 3_913, multi: 4_535, multiArray: 6_155),
-            range(3_926, "int8range", subtype: 20, array: 3_927, multi: 4_536, multiArray: 6_157),
+            range("int4range", subtype: 23, oids: [3_904, 3_905, 4_451, 6_150]),
+            range("numrange", subtype: 1_700, oids: [3_906, 3_907, 4_532, 6_151]),
+            range("tsrange", subtype: 1_114, oids: [3_908, 3_909, 4_533, 6_152]),
+            range("tstzrange", subtype: 1_184, oids: [3_910, 3_911, 4_534, 6_153]),
+            range("daterange", subtype: 1_082, oids: [3_912, 3_913, 4_535, 6_155]),
+            range("int8range", subtype: 20, oids: [3_926, 3_927, 4_536, 6_157]),
         ].flatMap { $0 }
     }()
 }

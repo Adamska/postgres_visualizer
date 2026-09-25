@@ -10,6 +10,7 @@ excluded:
 
 disabled_rules:
   - todo
+  - optional_data_string_conversion  # lossy UTF-8 decoding is intentional for wire data
   - opening_brace  # conflicts with multi-line guard/else formatting used in the codebase
 
 opt_in_rules:
@@ -48,6 +49,8 @@ opt_in_rules:
   - vertical_parameter_alignment_on_call
   - yoda_condition
 
+trailing_comma:
+  mandatory_comma: true
 line_length:
   warning: 160
   error: 200

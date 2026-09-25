@@ -217,7 +217,7 @@ enum PostgresTextFormat {
         let fraction = magnitude % 100
         var grouped = ""
         for (index, character) in String(whole).reversed().enumerated() {
-            if index > 0, index % 3 == 0 { grouped.append(",") }
+            if index > 0, index.isMultiple(of: 3) { grouped.append(",") }
             grouped.append(character)
         }
         return (isNegative ? "-$" : "$") + String(grouped.reversed()) + String(format: ".%02d", fraction)
