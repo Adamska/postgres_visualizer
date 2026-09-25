@@ -1,0 +1,78 @@
+/* Design tokens: one neutral scale, one accent, semantic aliases. Tailwind picks them up via @theme. */
+@theme {
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "SF Mono", Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-pop: 0 10px 30px -10px rgb(0 0 0 / 0.35), 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+:root {
+  color-scheme: light;
+  --canvas: #f5f5f7;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f0f0f3;
+  --line: rgb(0 0 0 / 0.08);
+  --line-strong: rgb(0 0 0 / 0.16);
+  --fg: #1c1c1e;
+  --fg-muted: #6e6e73;
+  --fg-subtle: #a1a1a6;
+  --accent: #4f6bff;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(79 107 255 / 0.12);
+  --danger: #e5484d;
+  --danger-soft: rgb(229 72 77 / 0.12);
+  --success: #2f9e63;
+  --success-soft: rgb(47 158 99 / 0.14);
+  --warning: #e08a1e;
+  --warning-soft: rgb(224 138 30 / 0.16);
+  --sidebar-bg: rgb(245 245 247 / 0.72);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #161618;
+  --surface: #1e1e21;
+  --surface-raised: #26262a;
+  --surface-sunken: #121214;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.16);
+  --fg: #f2f2f4;
+  --fg-muted: #9c9ca3;
+  --fg-subtle: #6a6a72;
+  --accent: #6d84ff;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(109 132 255 / 0.18);
+  --danger: #ff6369;
+  --danger-soft: rgb(255 99 105 / 0.16);
+  --success: #46c47c;
+  --success-soft: rgb(70 196 124 / 0.16);
+  --warning: #f0a53a;
+  --warning-soft: rgb(240 165 58 / 0.18);
+  --sidebar-bg: rgb(22 22 24 / 0.72);
+}
