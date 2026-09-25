@@ -156,10 +156,8 @@ pub async fn execute(
                         .collect(),
                 );
             }
-            SimpleQueryMessage::CommandComplete(count) => {
-                if is_data_modification(sql) {
-                    affected = Some(count);
-                }
+            SimpleQueryMessage::CommandComplete(count) if is_data_modification(sql) => {
+                affected = Some(count);
             }
             _ => {}
         }
