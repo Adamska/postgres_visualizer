@@ -50,6 +50,9 @@ export interface QueryResult {
   truncated: boolean;
 }
 
+/** Where profile passwords are kept. */
+export type PasswordStorage = "keychain" | "file";
+
 export type ErrorKind = "connection" | "authentication" | "server" | "storage" | "cancelled" | "internal";
 
 export interface AppError {

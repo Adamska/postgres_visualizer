@@ -27,7 +27,9 @@ UI work: `pnpm dev` then open http://localhost:1420 (add `?empty` for the welcom
 
 ## Features
 
-- **Connections**: saved profiles with colour and group, passwords in the macOS keychain, TLS modes
+- **Connections**: saved profiles with colour and group, passwords in the macOS keychain (or a
+  private file in the app folder, see Settings › Passwords), TLS modes, health checks with one-click
+  reconnect when the server stops answering
   (disabled, required, verify-full), import from `postgresql://` URLs, connection test.
 - **Sidebar**: schemas, tables, views and functions with instant filtering; several connections open
   side by side.
@@ -77,3 +79,17 @@ make screenshots        # renders the main screens into ./screenshots with the m
 - SSH tunnels
 - Schema editing (columns, indexes, constraints)
 - Editing query results that map to a single table
+
+## Keychain prompts
+
+macOS asks for permission when an app reads a keychain item it did not create, and "Always Allow"
+is tied to the app's code signature. Local builds are not signed with a stable identity, so every
+rebuild is a new app to the keychain and the prompt returns. Two ways around it:
+
+- Settings › Passwords › **App folder** keeps passwords in `secrets.json` (mode 600) inside
+  `~/Library/Application Support/Table++/` and never touches the keychain.
+- Sign the bundle with a certificate of your own (a self-signed "Code Signing" certificate made in
+  Keychain Access works) by setting `bundle.macOS.signingIdentity` in `src-tauri/tauri.conf.json`;
+  "Always Allow" then survives rebuilds.
+
+Either way the app reads each password at most once per launch.

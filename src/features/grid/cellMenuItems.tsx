@@ -10,6 +10,7 @@ import {
   PencilLine,
   RotateCcw,
   Rows3,
+  ToggleLeft,
   Trash2,
 } from "lucide-react";
 
@@ -88,14 +89,26 @@ export function buildCellMenuItems(
       disabled: !editable,
       onSelect: () => actions?.onCommitEdit?.(position, { kind: "default" }),
     },
-    {
-      id: "edit",
-      label: activation === "view" ? "View value…" : "Edit value…",
-      icon: activation === "view" ? <Braces className="size-3.5" /> : <PencilLine className="size-3.5" />,
-      shortcut: "⌘↩",
-      disabled: activation === "none",
-      onSelect: () => actions?.onOpenEditor?.(position),
-    },
+    activation === "toggle"
+      ? {
+          id: "toggle",
+          label: `Set ${row.cells[position.column]?.boolean ? "FALSE" : "TRUE"}`,
+          icon: <ToggleLeft className="size-3.5" />,
+          shortcut: "⌘↩",
+          onSelect: () =>
+            actions?.onCommitEdit?.(position, {
+              kind: "text",
+              value: row.cells[position.column]?.boolean ? "false" : "true",
+            }),
+        }
+      : {
+          id: "edit",
+          label: activation === "view" ? "View value…" : "Edit value…",
+          icon: activation === "view" ? <Braces className="size-3.5" /> : <PencilLine className="size-3.5" />,
+          shortcut: "⌘↩",
+          disabled: activation === "none",
+          onSelect: () => actions?.onOpenEditor?.(position),
+        },
   ];
   if (column.isForeignKey) {
     items.push({

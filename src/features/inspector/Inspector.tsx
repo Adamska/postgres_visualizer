@@ -5,11 +5,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/Primitives";
 import { IconButton } from "@/components/ui/Button";
+import { Segmented } from "@/components/ui/Controls";
 import { Input } from "@/components/ui/Input";
 import { DropdownMenu, type MenuItem } from "@/components/ui/Menu";
 import type { EditValue } from "@/core/changes/changeSet";
 import { exportJson } from "@/core/exchange/export";
-import { detailText, prefersLargeEditor } from "@/core/format/values";
+import { booleanLabel, booleanValue, detailText, prefersLargeEditor } from "@/core/format/values";
 import { jsonValueOf } from "@/core/json/tree";
 import { JsonViewer } from "@/features/json/JsonViewer";
 import { cn } from "@/lib/cn";
@@ -161,7 +162,13 @@ function FieldRow({
   const [showRaw, setShowRaw] = useState(false);
   useEffect(() => setDraft(value ?? ""), [value]);
   const json = useMemo(() => jsonValueOf(value, kind), [value, kind]);
-  const inline = editable && json === undefined && !prefersLargeEditor(kind) && !(value ?? "").includes("\n");
+  const boolean = kind === "boolean" ? booleanValue(value) : null;
+  const inline =
+    editable &&
+    json === undefined &&
+    kind !== "boolean" &&
+    !prefersLargeEditor(kind) &&
+    !(value ?? "").includes("\n");
   const commit = () => {
     if (draft !== (value ?? "") || (isNull && draft !== "")) onCommit({ kind: "text", value: draft });
   };
@@ -199,7 +206,13 @@ function FieldRow({
           />
         )}
       </div>
-      {json !== undefined && !showRaw ? (
+      {kind === "boolean" && !isDefault && (editable || boolean !== null) ? (
+        <BooleanField
+          value={boolean}
+          editable={editable}
+          onChange={(next) => onCommit({ kind: "text", value: next ? "true" : "false" })}
+        />
+      ) : json !== undefined && !showRaw ? (
         <div
           onDoubleClick={() => editable && onOpenEditor()}
           className="max-h-72 overflow-auto rounded-md bg-surface-sunken px-1 py-1"
@@ -228,5 +241,39 @@ function FieldRow({
         </pre>
       )}
     </div>
+  );
+}
+
+function BooleanField({
+  value,
+  editable,
+  onChange,
+}: {
+  value: boolean | null;
+  editable: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  if (!editable) {
+    return (
+      <div className="px-0.5 py-1 font-mono text-[11.5px] font-semibold">
+        {value === null ? (
+          <span className="text-fg-subtle italic">NULL</span>
+        ) : (
+          <span className={value ? "text-success" : "text-danger"}>{booleanLabel(value)}</span>
+        )}
+      </div>
+    );
+  }
+  return (
+    <Segmented<"true" | "false" | "null">
+      size="sm"
+      value={value === null ? "null" : value ? "true" : "false"}
+      onChange={(next) => next !== "null" && onChange(next === "true")}
+      options={[
+        { value: "true", label: <span className="text-success">TRUE</span> },
+        { value: "false", label: <span className="text-danger">FALSE</span> },
+        ...(value === null ? [{ value: "null" as const, label: <span className="italic">NULL</span> }] : []),
+      ]}
+    />
   );
 }

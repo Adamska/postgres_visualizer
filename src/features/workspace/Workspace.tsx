@@ -9,6 +9,7 @@ import { TableTab } from "@/features/table/TableTab";
 import { openQuery } from "@/state/actions/workspace";
 import { useAppStore } from "@/state/store";
 
+import { ConnectionBanner } from "./ConnectionBanner";
 import { TabBar } from "./TabBar";
 
 export function Workspace() {
@@ -22,6 +23,7 @@ export function Workspace() {
   return (
     <>
       <TabBar />
+      <ConnectionBanner />
       <div className="relative min-h-0 flex-1 overflow-hidden border-t border-line/70 bg-surface">
         {active ? (
           <TabContent key={active.id} tabId={active.id} kind={active.kind} />

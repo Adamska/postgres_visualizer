@@ -5,6 +5,7 @@ import type { RelationInfo } from "@/lib/types";
 import { completions, rankCompletions, referencedTables } from "./completion/engine";
 import { connectionUrl, parseConnectionUrl, profileIssues } from "./connection/url";
 import {
+  booleanValue,
   compactCount,
   detailText,
   formatCount,
@@ -47,6 +48,12 @@ describe("formatting", () => {
     expect(gridText(null, "text")).toBe("NULL");
     expect(gridText("a\nb", "text")).toBe("a⏎ b");
     expect(gridText("x".repeat(400), "text")).toHaveLength(301);
+    expect(gridText("t", "boolean")).toBe("TRUE");
+    expect(gridText("false", "boolean")).toBe("FALSE");
+    expect(gridText("maybe", "boolean")).toBe("maybe");
+    expect(booleanValue(" TRUE ")).toBe(true);
+    expect(booleanValue("0")).toBe(false);
+    expect(booleanValue(null)).toBeNull();
     expect(detailText('{"b":1,"a":[1]}', "json")).toBe('{\n  "b": 1,\n  "a": [\n    1\n  ]\n}');
     expect(formatCount(1)).toBe("1 row");
     expect(formatCount(12345)).toBe("12,345 rows");

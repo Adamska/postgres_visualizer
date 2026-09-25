@@ -1,10 +1,25 @@
-//! Local persistence: JSON documents in the app data directory and passwords in the keychain.
+//! Local persistence: JSON documents in the app data directory and passwords in the keychain
+//! or, when the user prefers no keychain prompts, in a file of the data directory.
 
 use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 
 const KEYCHAIN_SERVICE: &str = "io.tableplusplus.app";
+/// Document holding passwords when the file store is selected.
+const SECRETS_DOCUMENT: &str = "secrets";
+
+/// Where profile passwords live.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PasswordStorage {
+    /// The macOS keychain (prompts until the app is trusted).
+    Keychain,
+    /// `secrets.json` in the data directory, readable only by the current user.
+    File,
+}
 
 /// Directory holding the app's JSON documents.
 pub fn data_directory() -> AppResult<PathBuf> {
@@ -45,8 +60,33 @@ pub fn write_document(directory: &Path, name: &str, value: &serde_json::Value) -
     Ok(())
 }
 
-/// Reads a password from the keychain.
-pub fn read_password(profile_id: &str) -> AppResult<Option<String>> {
+/// Reads a password from the selected store.
+pub fn read_password(
+    directory: &Path,
+    storage: PasswordStorage,
+    profile_id: &str,
+) -> AppResult<Option<String>> {
+    match storage {
+        PasswordStorage::Keychain => read_keychain_password(profile_id),
+        PasswordStorage::File => read_file_password(directory, profile_id),
+    }
+}
+
+/// Stores (or removes, when empty) a password in the selected store.
+pub fn write_password(
+    directory: &Path,
+    storage: PasswordStorage,
+    profile_id: &str,
+    password: Option<&str>,
+) -> AppResult<()> {
+    let password = password.filter(|p| !p.is_empty());
+    match storage {
+        PasswordStorage::Keychain => write_keychain_password(profile_id, password),
+        PasswordStorage::File => write_file_password(directory, profile_id, password),
+    }
+}
+
+fn read_keychain_password(profile_id: &str) -> AppResult<Option<String>> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, profile_id)?;
     match entry.get_password() {
         Ok(password) => Ok(Some(password)),
@@ -55,12 +95,11 @@ pub fn read_password(profile_id: &str) -> AppResult<Option<String>> {
     }
 }
 
-/// Stores or removes a password.
-pub fn write_password(profile_id: &str, password: Option<&str>) -> AppResult<()> {
+fn write_keychain_password(profile_id: &str, password: Option<&str>) -> AppResult<()> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, profile_id)?;
     match password {
-        Some(password) if !password.is_empty() => entry.set_password(password)?,
-        _ => match entry.delete_credential() {
+        Some(password) => entry.set_password(password)?,
+        None => match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
             Err(error) => return Err(error.into()),
         },
@@ -68,9 +107,93 @@ pub fn write_password(profile_id: &str, password: Option<&str>) -> AppResult<()>
     Ok(())
 }
 
+fn read_file_password(directory: &Path, profile_id: &str) -> AppResult<Option<String>> {
+    let secrets = read_document(directory, SECRETS_DOCUMENT)?;
+    Ok(secrets
+        .as_ref()
+        .and_then(|value| value.get(profile_id))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string))
+}
+
+fn write_file_password(
+    directory: &Path,
+    profile_id: &str,
+    password: Option<&str>,
+) -> AppResult<()> {
+    let mut secrets = read_document(directory, SECRETS_DOCUMENT)?
+        .and_then(|value| match value {
+            serde_json::Value::Object(map) => Some(map),
+            _ => None,
+        })
+        .unwrap_or_default();
+    match password {
+        Some(password) => {
+            secrets.insert(
+                profile_id.to_string(),
+                serde_json::Value::String(password.to_string()),
+            );
+        }
+        None => {
+            secrets.remove(profile_id);
+        }
+    }
+    write_document(
+        directory,
+        SECRETS_DOCUMENT,
+        &serde_json::Value::Object(secrets),
+    )?;
+    restrict_permissions(&document_path(directory, SECRETS_DOCUMENT)?)
+}
+
+/// Makes a file readable and writable by its owner only.
+#[cfg(unix)]
+fn restrict_permissions(path: &Path) -> AppResult<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_permissions(_path: &Path) -> AppResult<()> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_passwords_round_trip_and_stay_private() {
+        let directory = tempfile::tempdir().unwrap();
+        let storage = PasswordStorage::File;
+        assert_eq!(read_password(directory.path(), storage, "a").unwrap(), None);
+        write_password(directory.path(), storage, "a", Some("s3cret")).unwrap();
+        write_password(directory.path(), storage, "b", Some("other")).unwrap();
+        assert_eq!(
+            read_password(directory.path(), storage, "a")
+                .unwrap()
+                .as_deref(),
+            Some("s3cret")
+        );
+        write_password(directory.path(), storage, "a", Some("")).unwrap();
+        assert_eq!(read_password(directory.path(), storage, "a").unwrap(), None);
+        assert_eq!(
+            read_password(directory.path(), storage, "b")
+                .unwrap()
+                .as_deref(),
+            Some("other")
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(directory.path().join("secrets.json"))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+    }
 
     #[test]
     fn documents_round_trip() {

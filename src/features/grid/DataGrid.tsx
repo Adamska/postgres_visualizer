@@ -42,6 +42,7 @@ import {
   visibleColumns,
 } from "./gridModel";
 import { buildCellThemes, buildRowThemes, useGridTheme } from "./gridTheme";
+import { booleanCellRenderer, isBooleanGridCell, type BooleanGridCell } from "./booleanCell";
 import { isJsonGridCell, jsonCellRenderer, type JsonGridCell } from "./jsonCell";
 import type { DataGridProps, GridSelection } from "./types";
 
@@ -67,7 +68,7 @@ export function DataGrid({
   const { theme, palette } = useGridTheme(fontSize);
   const cellThemes = useMemo(() => buildCellThemes(palette, fontSize), [palette, fontSize]);
   const rowThemes = useMemo(() => buildRowThemes(palette), [palette]);
-  const customRenderers = useMemo(() => [jsonCellRenderer(palette)], [palette]);
+  const customRenderers = useMemo(() => [jsonCellRenderer(palette), booleanCellRenderer(palette)], [palette]);
   const visible = useMemo(
     () => visibleColumns(content.columns, hiddenColumnIds),
     [content.columns, hiddenColumnIds],
@@ -120,6 +121,17 @@ export function DataGrid({
         };
         return jsonCell;
       }
+      if (cell.boolean !== null && cell.raw !== null && cell.raw !== undefined) {
+        const booleanCell: BooleanGridCell = {
+          kind: GridCellKind.Custom,
+          data: { kind: "boolean-badge", raw: cell.raw, value: cell.boolean },
+          copyData: cell.raw,
+          allowOverlay: false,
+          readonly: mode === "none",
+          themeOverride: cellThemes[style],
+        };
+        return booleanCell;
+      }
       return {
         kind: GridCellKind.Text,
         data: cell.raw ?? "",
@@ -166,8 +178,12 @@ export function DataGrid({
       if (!entry) return;
       let value: string;
       if (newValue.kind === GridCellKind.Text) value = newValue.data;
-      else if (newValue.kind === GridCellKind.Custom && isJsonGridCell(newValue)) value = newValue.data.raw;
-      else return;
+      else if (
+        newValue.kind === GridCellKind.Custom &&
+        (isJsonGridCell(newValue) || isBooleanGridCell(newValue))
+      ) {
+        value = newValue.data.raw;
+      } else return;
       const previous = content.rows[row]?.cells[entry.index];
       if (previous && (previous.raw ?? "") === value) return;
       actions?.onCommitEdit?.({ row, column: entry.index }, { kind: "text", value });
@@ -180,8 +196,15 @@ export function DataGrid({
       const entry = visible[col];
       const gridRow = content.rows[row];
       if (!entry || !gridRow) return;
-      const mode = activationFor(entry.column, gridRow, gridRow.cells[entry.index], readOnly);
+      const cell = gridRow.cells[entry.index];
+      const mode = activationFor(entry.column, gridRow, cell, readOnly);
       if (mode === "large" || mode === "view") actions?.onOpenEditor?.({ row, column: entry.index });
+      if (mode === "toggle" && cell) {
+        actions?.onCommitEdit?.(
+          { row, column: entry.index },
+          { kind: "text", value: cell.boolean ? "false" : "true" },
+        );
+      }
     },
     [visible, content, readOnly, actions],
   );
@@ -222,11 +245,12 @@ export function DataGrid({
       const gridRow = content.rows[cell[1]];
       if (!entry || !gridRow) return;
       const position = { row: cell[1], column: entry.index };
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey &&
-        activationFor(entry.column, gridRow, gridRow.cells[entry.index], readOnly) !== "none"
-      ) {
+      const gridCell = gridRow.cells[entry.index];
+      const activation = activationFor(entry.column, gridRow, gridCell, readOnly);
+      if (event.key === "Enter" && !event.shiftKey && activation === "toggle") {
+        event.cancel();
+        actions?.onCommitEdit?.(position, { kind: "text", value: gridCell?.boolean ? "false" : "true" });
+      } else if (event.key === "Enter" && !event.shiftKey && activation !== "none") {
         event.cancel();
         actions?.onOpenEditor?.(position);
       } else if (

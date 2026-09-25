@@ -45,6 +45,7 @@ pub fn run() {
             commands::server_version,
             commands::execute_sql,
             commands::execute_transaction,
+            commands::ping,
             commands::cancel_query,
             commands::list_schemas,
             commands::list_relations,

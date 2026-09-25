@@ -18,7 +18,8 @@ import type {
   TableStructure,
 } from "@/lib/types";
 
-export type ConnectionStatus = "connecting" | "connected" | "failed";
+/** `disconnected` means the server stopped answering; the entry stays so the user can reconnect. */
+export type ConnectionStatus = "connecting" | "connected" | "failed" | "disconnected";
 
 export interface ConnectionState {
   /** Same as the profile id. */

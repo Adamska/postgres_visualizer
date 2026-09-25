@@ -5,8 +5,8 @@ import { installBackend } from "@/lib/backend";
 import { createMockBackend, USERS, type MockBackend } from "@/test/mockBackend";
 
 import { startApp } from "./actions/app";
-import { connect, disconnect } from "./actions/connections";
-import { deleteProfile, saveProfile } from "./actions/profiles";
+import { checkConnections, connect, disconnect, reconnect } from "./actions/connections";
+import { clearPasswordCache, deleteProfile, loadPassword, saveProfile } from "./actions/profiles";
 import {
   errorMarkerFor,
   queryCompletions,
@@ -47,6 +47,7 @@ let restore: () => void;
 
 beforeEach(() => {
   resetStore();
+  clearPasswordCache();
   backend = createMockBackend();
   restore = installBackend(backend);
 });
@@ -83,6 +84,55 @@ describe("profiles and connections", () => {
     expect(await connect(profile)).toBe(false);
     expect(getState().connections[profile.id]).toBeUndefined();
     expect(getState().toasts[0]?.message).toBe("password authentication failed");
+  });
+});
+
+describe("connection health", () => {
+  it("reads the password once per run", async () => {
+    const profile = await connected();
+    openQuery(profile.id, "select 1");
+    await runQuery(getState().tabs[0]!.id, "all");
+    expect(await loadPassword(profile.id)).toBe("secret");
+    // `connected()` saved the password through the cache, so nothing was read from the store.
+    expect(backend.passwordReads).toEqual([]);
+  });
+
+  it("flags a lost server, keeps the tabs and reconnects", async () => {
+    const profile = await connected();
+    const tableTabId = openTable(profile.id, USERS);
+    await loadTable(tableTabId);
+    const firstSession = getState().connections[profile.id]!.sessionId;
+    backend.alive = false;
+    await checkConnections();
+    let connection = getState().connections[profile.id]!;
+    expect(connection.status).toBe("disconnected");
+    expect(connection.sessionId).toBeNull();
+    expect(getState().tabs).toHaveLength(1);
+    expect(findTab(getState().tabs[0]!.id, "table")?.result?.rows).toHaveLength(3);
+
+    // Loading while the server is down surfaces a connection error but keeps the entry.
+    await loadTable(getState().tabs[0]!.id);
+    expect(findTab(getState().tabs[0]!.id, "table")?.error?.kind).toBe("connection");
+    expect(await reconnect(profile.id)).toBe(false);
+    expect(getState().connections[profile.id]!.status).toBe("disconnected");
+
+    backend.alive = true;
+    expect(await reconnect(profile.id)).toBe(true);
+    connection = getState().connections[profile.id]!;
+    expect(connection.status).toBe("connected");
+    expect(connection.sessionId).not.toBe(firstSession);
+    expect(connection.schemas.length).toBeGreaterThan(0);
+  });
+
+  it("marks the connection lost when a statement fails on a dead socket", async () => {
+    const profile = await connected();
+    const tabId = openQuery(profile.id, "select 1")!;
+    await runQuery(tabId, "all");
+    backend.alive = false;
+    await runQuery(tabId, "all");
+    expect(findTab(tabId, "query")?.error?.kind).toBe("connection");
+    expect(findTab(tabId, "query")?.sessionId).toBeNull();
+    expect(getState().connections[profile.id]?.status).toBe("disconnected");
   });
 });
 

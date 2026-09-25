@@ -42,6 +42,16 @@ pub struct QueryResult {
     pub truncated: bool,
 }
 
+/// Text of a value as the front end expects it: booleans arrive as `t`/`f` on the wire and are
+/// widened to `true`/`false`, the same form `::text` produces.
+fn canonical_value(kind: ValueKind, value: &str) -> String {
+    match (kind, value) {
+        (ValueKind::Boolean, "t") => "true".to_string(),
+        (ValueKind::Boolean, "f") => "false".to_string(),
+        _ => value.to_string(),
+    }
+}
+
 /// Leading keyword of a statement, lowercased, ignoring comments and parentheses.
 pub fn leading_keyword(sql: &str) -> String {
     let mut rest = sql.trim_start();
@@ -139,7 +149,10 @@ pub async fn execute(
                 }
                 rows.push(
                     (0..row.len())
-                        .map(|index| row.get(index).map(str::to_string))
+                        .map(|index| {
+                            let kind = columns.get(index).map_or(ValueKind::Other, |c| c.kind);
+                            row.get(index).map(|value| canonical_value(kind, value))
+                        })
                         .collect(),
                 );
             }
@@ -196,6 +209,13 @@ mod tests {
         assert_eq!(leading_keyword("  -- hi\n  /* x */ (SELECT 1)"), "select");
         assert_eq!(leading_keyword("Insert into t values (1)"), "insert");
         assert_eq!(leading_keyword(""), "");
+    }
+
+    #[test]
+    fn widens_wire_booleans() {
+        assert_eq!(canonical_value(ValueKind::Boolean, "t"), "true");
+        assert_eq!(canonical_value(ValueKind::Boolean, "f"), "false");
+        assert_eq!(canonical_value(ValueKind::Text, "t"), "t");
     }
 
     #[test]

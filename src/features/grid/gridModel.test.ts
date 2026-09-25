@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildGridTheme, readToken } from "./gridTheme";
+import { booleanColor } from "./booleanCell";
 import { layoutSegments, segmentColor } from "./jsonCell";
 import {
   activationFor,
@@ -43,17 +44,65 @@ const content: GridContent = {
   rows: [
     {
       cells: [
-        { text: "1", raw: "1", isNull: false, isModified: false, isDefault: false, json: null },
-        { text: "Ann", raw: "Ann", isNull: false, isModified: true, isDefault: false, json: null },
-        { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false, json: null },
+        {
+          text: "1",
+          raw: "1",
+          isNull: false,
+          isModified: false,
+          isDefault: false,
+          json: null,
+          boolean: null,
+        },
+        {
+          text: "Ann",
+          raw: "Ann",
+          isNull: false,
+          isModified: true,
+          isDefault: false,
+          json: null,
+          boolean: null,
+        },
+        {
+          text: "NULL",
+          raw: null,
+          isNull: true,
+          isModified: false,
+          isDefault: false,
+          json: null,
+          boolean: null,
+        },
       ],
       state: "normal",
     },
     {
       cells: [
-        { text: "2", raw: "2", isNull: false, isModified: false, isDefault: false, json: null },
-        { text: "Bob", raw: "Bob", isNull: false, isModified: false, isDefault: false, json: null },
-        { text: "{}", raw: "{}", isNull: false, isModified: false, isDefault: false, json: null },
+        {
+          text: "2",
+          raw: "2",
+          isNull: false,
+          isModified: false,
+          isDefault: false,
+          json: null,
+          boolean: null,
+        },
+        {
+          text: "Bob",
+          raw: "Bob",
+          isNull: false,
+          isModified: false,
+          isDefault: false,
+          json: null,
+          boolean: null,
+        },
+        {
+          text: "{}",
+          raw: "{}",
+          isNull: false,
+          isModified: false,
+          isDefault: false,
+          json: null,
+          boolean: null,
+        },
       ],
       state: "deleted",
     },
@@ -138,6 +187,7 @@ describe("json cells", () => {
     isModified: false,
     isDefault: false,
     json: [{ kind: "punct" as const, text: "{ a: 1 }" }],
+    boolean: null,
   };
   const plainCell = content.rows[1]!.cells[1]!;
 
@@ -147,6 +197,17 @@ describe("json cells", () => {
     expect(activationFor(content.columns[1]!, content.rows[0], jsonCell, false)).toBe("large");
     expect(activationFor(content.columns[1]!, content.rows[0], plainCell, false)).toBe("inline");
     expect(activationFor(content.columns[1]!, content.rows[1], jsonCell, false)).toBe("none");
+  });
+
+  it("toggles editable booleans and views read-only ones", () => {
+    const flag = { ...plainCell, raw: "true", text: "TRUE", boolean: true };
+    const booleanColumn = column(4, "active", { kind: "boolean" });
+    expect(activationFor(booleanColumn, content.rows[0], flag, false)).toBe("toggle");
+    expect(activationFor(booleanColumn, content.rows[0], flag, true)).toBe("none");
+    expect(activationFor(booleanColumn, content.rows[0], { ...flag, boolean: null }, false)).toBe("inline");
+    const { palette } = buildGridTheme((name) => readToken(name), 13);
+    expect(booleanColor(true, palette)).toBe("#2f9e63");
+    expect(booleanColor(false, palette)).toBe("#e5484d");
   });
 
   it("lays segments out and cuts the overflow with an ellipsis", () => {

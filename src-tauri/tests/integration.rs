@@ -56,6 +56,19 @@ async fn executes_queries_with_types_and_limits() {
         Some("{vip,\"early adopter\"}")
     );
 
+    let booleans = execute(
+        &session,
+        "SELECT true AS t, false AS f, NULL::bool AS n",
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(booleans.columns[0].kind, ValueKind::Boolean);
+    assert_eq!(
+        booleans.rows[0],
+        vec![Some("true".to_string()), Some("false".to_string()), None]
+    );
+
     // The connection is still usable after an early stop.
     let next = execute(&session, "SELECT 1 AS one", None).await.unwrap();
     assert_eq!(next.rows, vec![vec![Some("1".to_string())]]);

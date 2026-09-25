@@ -44,6 +44,19 @@ await shot("value-editor-json-text");
 await page.keyboard.press("Escape");
 await page.keyboard.press("Alt+Meta+i");
 await settle(300);
+
+// Lost server: the mock stops answering pings; a focus event triggers the health check.
+await page.evaluate(() => {
+  window.__tableppMock.alive = false;
+  window.dispatchEvent(new Event("focus"));
+});
+await settle(500);
+await shot("connection-lost");
+await page.evaluate(() => {
+  window.__tableppMock.alive = true;
+});
+await page.getByRole("button", { name: "Reconnect" }).first().click();
+await settle(800);
 await page.getByRole("tab").nth(1).click();
 await settle(900);
 await shot("query-tab");

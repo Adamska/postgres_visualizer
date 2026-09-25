@@ -5,9 +5,37 @@ import type { CellValue, ValueKind } from "@/lib/types";
 export const NULL_PLACEHOLDER = "NULL";
 export const GRID_DISPLAY_LIMIT = 300;
 
+/** Parses a boolean in any form PostgreSQL emits or accepts; `null` when it is not one. */
+export function booleanValue(text: string | null | undefined): boolean | null {
+  switch (text?.trim().toLowerCase()) {
+    case "t":
+    case "true":
+    case "yes":
+    case "on":
+    case "1":
+      return true;
+    case "f":
+    case "false":
+    case "no":
+    case "off":
+    case "0":
+      return false;
+    default:
+      return null;
+  }
+}
+
+export function booleanLabel(value: boolean): string {
+  return value ? "TRUE" : "FALSE";
+}
+
 /** Single-line text for grid cells. */
 export function gridText(value: CellValue, kind: ValueKind): string {
   if (value === null) return NULL_PLACEHOLDER;
+  if (kind === "boolean") {
+    const parsed = booleanValue(value);
+    if (parsed !== null) return booleanLabel(parsed);
+  }
   let line = value.length > GRID_DISPLAY_LIMIT ? `${value.slice(0, GRID_DISPLAY_LIMIT)}…` : value;
   if (kind === "json" || kind === "text" || kind === "array" || kind === "composite" || kind === "other") {
     line = line.replace(/\r?\n/g, "⏎ ");

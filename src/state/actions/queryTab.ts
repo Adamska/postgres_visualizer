@@ -22,7 +22,7 @@ import {
 
 import { useSettings } from "../settings";
 import { findTab, getState, mutateTab, pushToast, type QueryTab } from "../store";
-import { allRelations, connectionParams, loadStructure } from "./connections";
+import { allRelations, connectionParams, loadStructure, noteFailure } from "./connections";
 import { loadPassword } from "./profiles";
 import { recordHistory, saveQuery as storeSavedQuery } from "./storage";
 import { persistWorkspace } from "./workspace";
@@ -145,6 +145,10 @@ async function execute(tabId: string, statements: Statement[]): Promise<void> {
           historyEntry(tab, statement.text, performance.now() - statementStart, false, null),
         );
         if (failure.kind === "cancelled") await resetSession(tabId);
+        if (failure.kind === "connection") {
+          await resetSession(tabId);
+          await noteFailure(tab.connectionId, failure);
+        }
         const marker = errorMarkerFor(failure, statement);
         const inTransaction = findTab(tabId, "query")?.inTransaction ?? false;
         mutateTab(tabId, "query", (t) => {
@@ -159,6 +163,7 @@ async function execute(tabId: string, statements: Statement[]): Promise<void> {
     }
   } catch (error) {
     failure = toAppError(error);
+    await noteFailure(tab.connectionId, failure);
     mutateTab(tabId, "query", (t) => {
       t.error = failure;
     });

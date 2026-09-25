@@ -8,6 +8,7 @@ import {
   Plus,
   Search,
   Table2,
+  WifiOff,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -25,6 +26,7 @@ import {
   connect,
   disconnect,
   loadSchemaObjects,
+  reconnect,
   refreshSchemas,
   toggleSchema,
 } from "@/state/actions/connections";
@@ -148,9 +150,11 @@ function ConnectionSection({ id, search }: { id: string; search: string }) {
   const showSystem = useSettings((s) => s.settings.showSystemSchemas);
   if (!connection) return null;
   const { profile } = connection;
+  const lost = connection.status === "disconnected";
   const items: MenuItem[] = [
+    ...(lost ? [{ id: "reconnect", label: "Reconnect", onSelect: () => void reconnect(id) }] : []),
     { id: "query", label: "New query tab", onSelect: () => void openQuery(id) },
-    { id: "refresh", label: "Refresh schema", onSelect: () => void refreshSchemas(id) },
+    { id: "refresh", label: "Refresh schema", disabled: lost, onSelect: () => void refreshSchemas(id) },
     {
       id: "edit",
       label: "Edit connection…",
@@ -189,6 +193,7 @@ function ConnectionSection({ id, search }: { id: string; search: string }) {
           {profileDisplayName(profile)}
         </span>
         {connection.schemaLoading && <Spinner className="size-3 text-fg-subtle" />}
+        {lost && <WifiOff className="size-3.5 text-warning" aria-label="Connection lost" />}
         <DropdownMenu
           trigger={
             <IconButton
@@ -210,6 +215,18 @@ function ConnectionSection({ id, search }: { id: string; search: string }) {
       )}
       {connection.status === "failed" && (
         <div className="px-3 py-1.5 text-[12px] text-danger">{connection.error}</div>
+      )}
+      {lost && (
+        <div className="mx-1 flex items-center gap-2 rounded-md bg-warning-soft px-2 py-1.5 text-[12px] text-fg-muted">
+          <span className="min-w-0 flex-1 truncate">Connection lost</span>
+          <button
+            type="button"
+            onClick={() => void reconnect(id)}
+            className="shrink-0 font-medium text-accent hover:underline"
+          >
+            Reconnect
+          </button>
+        </div>
       )}
       {connection.status === "connected" &&
         schemas.map((schema) => (

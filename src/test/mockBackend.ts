@@ -143,8 +143,12 @@ export interface MockBackend extends Backend {
   executed: string[];
   documents: Record<string, unknown>;
   passwords: Record<string, string>;
+  /** Password reads, to check the cache. */
+  passwordReads: string[];
   sessions: string[];
   closed: string[];
+  /** Answer of `ping`; flip it to simulate a lost server. */
+  alive: boolean;
 }
 
 export function createMockBackend(options: MockOptions = {}): MockBackend {
@@ -172,10 +176,23 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     executed: [],
     documents: {},
     passwords: {},
+    passwordReads: [],
     sessions: [],
     closed: [],
+    alive: true,
     connect: (params) => {
       if (options.connectError) return Promise.reject(options.connectError);
+      if (!mock.alive) {
+        const error: AppError = {
+          kind: "connection",
+          message: "Could not connect to the server.",
+          detail: null,
+          hint: null,
+          sqlState: null,
+          position: null,
+        };
+        return Promise.reject(error);
+      }
       if (params.password === "wrong") {
         const error: AppError = {
           kind: "authentication",
@@ -201,6 +218,17 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     executeSql: (_sessionId, sql) => {
       mock.executed.push(sql);
       if (options.executeError) return Promise.reject(options.executeError);
+      if (!mock.alive) {
+        const error: AppError = {
+          kind: "connection",
+          message: "The connection was closed.",
+          detail: null,
+          hint: null,
+          sqlState: null,
+          position: null,
+        };
+        return Promise.reject(error);
+      }
       const custom = options.results?.[sql];
       if (custom) return Promise.resolve(custom);
       if (sql.startsWith("SELECT count(*)")) {
@@ -233,6 +261,7 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
       mock.executed.push("COMMIT");
       return results;
     },
+    ping: (sessionId) => Promise.resolve(mock.alive && mock.sessions.includes(sessionId)),
     cancelQuery: () => Promise.resolve(),
     listSchemas: () => Promise.resolve(schemas),
     listRelations: (_s, schema) => Promise.resolve(relations.filter((r) => r.schema === schema)),
@@ -257,7 +286,10 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
       mock.documents[name] = JSON.parse(JSON.stringify(value)) as unknown;
       return Promise.resolve();
     },
-    getPassword: (profileId) => Promise.resolve(mock.passwords[profileId] ?? null),
+    getPassword: (profileId) => {
+      mock.passwordReads.push(profileId);
+      return Promise.resolve(mock.passwords[profileId] ?? null);
+    },
     setPassword: (profileId, password) => {
       if (password === null) {
         mock.passwords = Object.fromEntries(

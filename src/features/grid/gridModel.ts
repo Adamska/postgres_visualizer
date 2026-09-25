@@ -137,8 +137,11 @@ export function editModeFor(column: GridColumn, row: GridRow | undefined, readOn
   return prefersLargeEditor(column.kind) || hasEnum ? "large" : "inline";
 }
 
-/** What activating a cell (double-click, Enter) does; read-only JSON cells still open the viewer. */
-export type ActivationMode = EditMode | "view";
+/**
+ * What activating a cell (double-click, Enter) does: editing, the large editor, the read-only
+ * viewer for JSON, or flipping an editable boolean.
+ */
+export type ActivationMode = EditMode | "view" | "toggle";
 
 export function activationFor(
   column: GridColumn,
@@ -148,6 +151,7 @@ export function activationFor(
 ): ActivationMode {
   const mode = editModeFor(column, row, readOnly);
   if (mode === "inline" && cell?.json) return "large";
+  if (mode === "inline" && cell?.boolean !== null && cell?.boolean !== undefined) return "toggle";
   if (mode === "none" && cell?.json && row?.state !== "deleted") return "view";
   return mode;
 }

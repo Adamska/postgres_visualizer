@@ -1,7 +1,7 @@
 // Builds the grid snapshot from a result set, the table structure and staged changes.
 
 import { isTableEditable, rowIdentity, type ChangeSet, type EditValue } from "@/core/changes/changeSet";
-import { gridText } from "@/core/format/values";
+import { booleanValue, gridText } from "@/core/format/values";
 import { previewSegments, segmentsText, type JsonSegment } from "@/core/json/preview";
 import { jsonValueOf } from "@/core/json/tree";
 import type { GridCell, GridColumn, GridContent, GridRow } from "@/features/grid/types";
@@ -42,12 +42,21 @@ function valueCell(value: string, kind: GridColumn["kind"], isModified: boolean)
     isModified,
     isDefault: false,
     json,
+    boolean: kind === "boolean" ? booleanValue(value) : null,
   };
 }
 
 function plainCell(value: CellValue, kind: GridColumn["kind"]): GridCell {
   if (value === null) {
-    return { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false, json: null };
+    return {
+      text: "NULL",
+      raw: null,
+      isNull: true,
+      isModified: false,
+      isDefault: false,
+      json: null,
+      boolean: null,
+    };
   }
   return valueCell(value, kind, false);
 }
@@ -57,7 +66,15 @@ function editedCell(edit: EditValue, kind: GridColumn["kind"]): GridCell {
     case "text":
       return valueCell(edit.value, kind, true);
     case "null":
-      return { text: "NULL", raw: null, isNull: true, isModified: true, isDefault: false, json: null };
+      return {
+        text: "NULL",
+        raw: null,
+        isNull: true,
+        isModified: true,
+        isDefault: false,
+        json: null,
+        boolean: null,
+      };
     case "default":
       return {
         text: "DEFAULT",
@@ -66,6 +83,7 @@ function editedCell(edit: EditValue, kind: GridColumn["kind"]): GridCell {
         isModified: true,
         isDefault: true,
         json: null,
+        boolean: null,
       };
   }
 }
@@ -104,9 +122,18 @@ export function editableRows(result: QueryResult, structure: TableStructure, cha
           isModified: false,
           isDefault: true,
           json: null,
+          boolean: null,
         };
       }
-      return { text: "NULL", raw: null, isNull: true, isModified: false, isDefault: false, json: null };
+      return {
+        text: "NULL",
+        raw: null,
+        isNull: true,
+        isModified: false,
+        isDefault: false,
+        json: null,
+        boolean: null,
+      };
     });
     rows.push({ cells, state: "inserted" });
   }

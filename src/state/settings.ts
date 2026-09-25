@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 import { backend } from "@/lib/backend";
+import type { PasswordStorage } from "@/lib/types";
 
 export type ThemeSetting = "system" | "light" | "dark";
 
@@ -15,6 +16,7 @@ export interface Settings {
   restoreWorkspace: boolean;
   showSystemSchemas: boolean;
   confirmBeforeCommit: boolean;
+  passwordStorage: PasswordStorage;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,6 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   restoreWorkspace: true,
   showSystemSchemas: false,
   confirmBeforeCommit: true,
+  passwordStorage: "keychain",
 };
 
 interface SettingsStore {

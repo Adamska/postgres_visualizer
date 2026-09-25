@@ -20,6 +20,8 @@ if (!isTauri()) {
   const mock = createMockBackend();
   installPreviewData(mock);
   installBackend(mock);
+  // Lets the screenshot script drive the mock (e.g. simulate a lost server).
+  (window as { __tableppMock?: unknown }).__tableppMock = mock;
 }
 
 export function App() {

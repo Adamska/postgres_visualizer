@@ -32,6 +32,8 @@ export interface GridCell {
   isDefault: boolean;
   /** Coloured single-line preview when the value is JSON; `null` for plain values. */
   json: JsonSegment[] | null;
+  /** Parsed value for boolean columns; `null` for other kinds, NULL and unparsable text. */
+  boolean: boolean | null;
 }
 
 export interface GridRow {

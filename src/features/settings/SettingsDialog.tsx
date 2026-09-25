@@ -2,8 +2,10 @@ import { Button } from "@/components/ui/Button";
 import { Segmented, Select, Switch } from "@/components/ui/Controls";
 import { Dialog } from "@/components/ui/Overlay";
 import { PAGE_SIZES } from "@/core/query/tableQuery";
+import type { PasswordStorage } from "@/lib/types";
+import { migratePasswords } from "@/state/actions/profiles";
 import { useSettings, type ThemeSetting } from "@/state/settings";
-import { closeDialog } from "@/state/store";
+import { closeDialog, pushToast } from "@/state/store";
 
 const LIMITS = [200, 500, 1000, 5000, 10000, 50000];
 
@@ -12,6 +14,18 @@ export function SettingsDialog() {
   const update = useSettings((s) => s.update);
   const numberOptions = (values: number[]) =>
     values.map((v) => ({ value: String(v), label: v.toLocaleString("en-US") }));
+  const changePasswordStorage = async (storage: PasswordStorage) => {
+    const previous = settings.passwordStorage;
+    if (storage === previous) return;
+    await update({ passwordStorage: storage });
+    const moved = await migratePasswords(previous, storage);
+    if (moved > 0) {
+      pushToast({
+        tone: "success",
+        title: `Moved ${moved} password${moved === 1 ? "" : "s"} to the ${storage === "file" ? "app folder" : "keychain"}`,
+      });
+    }
+  };
   return (
     <Dialog
       open
@@ -94,6 +108,24 @@ export function SettingsDialog() {
             onChange={(v) => void update({ confirmBeforeCommit: v })}
             label="Show the SQL preview before committing"
           />
+        </Section>
+        <Section title="Passwords">
+          <Row label="Store passwords in">
+            <Segmented<PasswordStorage>
+              size="sm"
+              value={settings.passwordStorage}
+              onChange={(v) => void changePasswordStorage(v)}
+              options={[
+                { value: "keychain", label: "Keychain" },
+                { value: "file", label: "App folder" },
+              ]}
+            />
+          </Row>
+          <p className="pb-1 text-[11.5px] leading-relaxed text-fg-subtle">
+            {settings.passwordStorage === "keychain"
+              ? "The macOS keychain asks for permission until it trusts this build; unsigned builds are trusted per build, so a rebuild asks again. Passwords are read once per launch."
+              : "Passwords are kept unencrypted in secrets.json inside the app's data folder, readable only by your user account. No keychain prompts."}
+          </p>
         </Section>
       </div>
     </Dialog>

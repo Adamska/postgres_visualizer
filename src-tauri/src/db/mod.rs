@@ -25,6 +25,20 @@ pub struct Session {
 }
 
 impl Session {
+    /// Whether the server still answers on this session. Cheap when the socket is already
+    /// closed; otherwise a `SELECT 1` bounded by a short timeout, run outside the gate so a
+    /// long statement does not make the check wait.
+    pub async fn ping(&self) -> bool {
+        if self.client.is_closed() {
+            return false;
+        }
+        let probe = self.client.simple_query("SELECT 1");
+        matches!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), probe).await,
+            Ok(Ok(_))
+        )
+    }
+
     /// Cancels the statement currently running on this session, if any.
     pub async fn cancel(&self) -> AppResult<()> {
         let token = self.client.cancel_token();

@@ -10,7 +10,7 @@ use crate::db::connect::ConnectionParams;
 use crate::db::execute::{self, QueryResult};
 use crate::db::SessionRegistry;
 use crate::error::AppResult;
-use crate::storage;
+use crate::storage::{self, PasswordStorage};
 
 /// Opens a session and returns its id.
 #[tauri::command]
@@ -82,6 +82,15 @@ pub async fn execute_transaction(
     execute::execute_transaction(&session, &statements).await
 }
 
+/// Whether a session still answers; `false` for unknown sessions too.
+#[tauri::command]
+pub async fn ping(registry: State<'_, SessionRegistry>, session_id: String) -> AppResult<bool> {
+    match registry.get(&session_id).await {
+        Ok(session) => Ok(session.ping().await),
+        Err(_) => Ok(false),
+    }
+}
+
 /// Cancels the running statement of a session.
 #[tauri::command]
 pub async fn cancel_query(
@@ -148,14 +157,23 @@ pub fn save_document(name: String, value: serde_json::Value) -> AppResult<()> {
     storage::write_document(&storage::data_directory()?, &name, &value)
 }
 
-/// Reads a profile password from the keychain.
+/// Reads a profile password from the selected store.
 #[tauri::command]
-pub fn get_password(profile_id: String) -> AppResult<Option<String>> {
-    storage::read_password(&profile_id)
+pub fn get_password(profile_id: String, storage: PasswordStorage) -> AppResult<Option<String>> {
+    storage::read_password(&storage::data_directory()?, storage, &profile_id)
 }
 
-/// Stores (or removes, when empty) a profile password in the keychain.
+/// Stores (or removes, when empty) a profile password in the selected store.
 #[tauri::command]
-pub fn set_password(profile_id: String, password: Option<String>) -> AppResult<()> {
-    storage::write_password(&profile_id, password.as_deref())
+pub fn set_password(
+    profile_id: String,
+    password: Option<String>,
+    storage: PasswordStorage,
+) -> AppResult<()> {
+    storage::write_password(
+        &storage::data_directory()?,
+        storage,
+        &profile_id,
+        password.as_deref(),
+    )
 }

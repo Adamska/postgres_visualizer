@@ -20,6 +20,8 @@ export interface GridPalette {
   syntaxString: string;
   syntaxNumber: string;
   syntaxBoolean: string;
+  success: string;
+  danger: string;
 }
 
 /** A realised grid theme: Glide's theme plus the palette used for per-cell overrides. */
@@ -49,6 +51,8 @@ const FALLBACKS: Record<string, string> = {
   "--syntax-string": "#1a7f4b",
   "--syntax-number": "#1d5bd6",
   "--syntax-boolean": "#8b3fc7",
+  "--success": "#2f9e63",
+  "--danger": "#e5484d",
 };
 
 /** Reads one custom property from `<html>`, falling back to the light-theme value. */
@@ -72,6 +76,8 @@ export function buildGridTheme(token: (name: string) => string, fontSize: number
     syntaxString: token("--syntax-string"),
     syntaxNumber: token("--syntax-number"),
     syntaxBoolean: token("--syntax-boolean"),
+    success: token("--success"),
+    danger: token("--danger"),
   };
   const theme: Partial<Theme> = {
     accentColor: token("--accent"),

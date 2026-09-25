@@ -2,6 +2,7 @@
 
 import { useSettings } from "../settings";
 import { mutate } from "../store";
+import { startConnectionWatch } from "./connections";
 import { loadProfiles } from "./profiles";
 import { restoreWorkspace } from "./workspace";
 
@@ -15,4 +16,5 @@ export async function startApp(): Promise<void> {
   mutate((draft) => {
     draft.ready = true;
   });
+  startConnectionWatch();
 }
