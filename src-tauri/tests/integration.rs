@@ -158,6 +158,29 @@ async fn transactions_roll_back() {
         .await
         .unwrap();
     assert_eq!(count.rows[0][0].as_deref(), Some("0"));
+
+    // An error raised while planning (here a bad literal) reports its own cause, not the
+    // "transaction is aborted" that follows it.
+    let Err(planning) = execute_transaction(
+        &session,
+        &[
+            "INSERT INTO tx VALUES (1)".into(),
+            "UPDATE tx SET id = '' WHERE id = 1".into(),
+        ],
+    )
+    .await
+    else {
+        panic!("expected a failure")
+    };
+    assert_eq!(planning.sql_state.as_deref(), Some("22P02"));
+    assert!(planning.message.contains("invalid input syntax"));
+    let count = execute(&session, "SELECT count(*) FROM tx", None)
+        .await
+        .unwrap();
+    assert_eq!(count.rows[0][0].as_deref(), Some("0"));
+    // Several commands in one string cannot be prepared but still run.
+    let several = execute(&session, "SELECT 1; SELECT 2", None).await.unwrap();
+    assert_eq!(several.rows.len(), 2);
     let ok = execute_transaction(
         &session,
         &[

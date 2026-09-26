@@ -245,6 +245,20 @@ describe("table tab", () => {
     expect(csv).toBe("id,email,is_active,profile,team_id\n2,bob@example.com,false,,\n");
   });
 
+  it("turns an empty edit into NULL or DEFAULT for non-text columns", async () => {
+    const profile = await connected();
+    const tabId = openTable(profile.id, USERS);
+    await loadTable(tabId);
+    setCell(tabId, 0, 4, { kind: "text", value: "" }); // team_id integer, nullable
+    setCell(tabId, 0, 1, { kind: "text", value: "" }); // email text
+    setCell(tabId, 0, 2, { kind: "text", value: "" }); // is_active boolean with default, nullable
+    const tab = findTab(tabId, "table")!;
+    expect(cellValue(tab, 0, 4)).toBeNull();
+    expect(cellValue(tab, 0, 1)).toBe("");
+    expect(cellValue(tab, 0, 2)).toBeNull();
+    expect(pendingStatements(tab)[0]).toContain('"team_id" = NULL');
+  });
+
   it("keeps views read-only", async () => {
     const profile = await connected();
     const tabId = openTable(profile.id, { schema: "public", name: "active_users" });

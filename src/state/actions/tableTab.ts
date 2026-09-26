@@ -25,7 +25,7 @@ import {
   type Filter,
   type TableQuery,
 } from "@/core/query/tableQuery";
-import { toAppError, type CellValue, type TableRef } from "@/lib/types";
+import { toAppError, type CellValue, type ColumnInfo, type TableRef } from "@/lib/types";
 
 import { findTab, getState, mutateTab, type TableTab } from "../store";
 import { executeOn, executeTransactionOn, loadStructure } from "./connections";
@@ -195,13 +195,29 @@ export function toggleFilterBar(tabId: string): void {
 
 // Editing
 
-export function setCell(tabId: string, row: number, column: number, value: EditValue): void {
+/**
+ * An empty string only makes sense for text; for other kinds clearing a cell means NULL when
+ * the column allows it, else DEFAULT when it has one.
+ */
+export function normaliseEdit(value: EditValue, info: ColumnInfo | undefined): EditValue {
+  if (value.kind !== "text" || value.value !== "" || !info) return value;
+  if (info.kind === "text" || info.kind === "other") return value;
+  if (info.isNullable) return { kind: "null" };
+  if (info.defaultValue !== null || info.isIdentity) return { kind: "default" };
+  return value;
+}
+
+export function setCell(tabId: string, row: number, column: number, edit: EditValue): void {
   const tab = findTab(tabId, "table");
   if (!tab?.result || !tab.structure || !isTableEditable(tab.structure)) return;
   const name = tab.result.columns[column]?.name;
   if (name === undefined) return;
   const source = rowSource(tab, row);
   if (!source) return;
+  const value = normaliseEdit(
+    edit,
+    tab.structure.columns.find((c) => c.name === name),
+  );
   mutateTab(tabId, "table", (t) => {
     if (source.kind === "existing") {
       const identity = identityOf(t, source.index);

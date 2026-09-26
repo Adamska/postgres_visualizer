@@ -42,6 +42,13 @@ pub struct QueryResult {
     pub truncated: bool,
 }
 
+/// Whether `prepare` refused the text because it holds several statements.
+fn is_multiple_commands(error: &tokio_postgres::Error) -> bool {
+    error
+        .as_db_error()
+        .is_some_and(|db| db.message().contains("multiple commands"))
+}
+
 /// Text of a value as the front end expects it: booleans arrive as `t`/`f` on the wire and are
 /// widened to `true`/`false`, the same form `::text` produces.
 fn canonical_value(kind: ValueKind, value: &str) -> String {
@@ -95,7 +102,11 @@ pub async fn execute(
     let _gate = session.gate.lock().await;
     let start = Instant::now();
 
-    // Column types via the extended protocol; ignored on failure so odd statements still run.
+    // Column types via the extended protocol. A genuine SQL error is returned right away: inside a
+    // transaction it has already aborted the block, and running the simple query anyway would
+    // only report "current transaction is aborted" instead of the real cause. The one failure
+    // that is not an error of the statement itself, several commands in one string, falls back
+    // to the simple protocol without types.
     let typed_columns: Option<Vec<ResultColumn>> = match session.client.prepare(sql).await {
         Ok(statement) => Some(
             statement
@@ -109,7 +120,8 @@ pub async fn execute(
                 })
                 .collect(),
         ),
-        Err(_) => None,
+        Err(error) if is_multiple_commands(&error) => None,
+        Err(error) => return Err(error.into()),
     };
 
     let stream = session.client.simple_query_raw(sql).await?;
