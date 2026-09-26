@@ -44,6 +44,14 @@ jobs:
           /opt/homebrew/opt/postgresql@17/bin/psql -d postgres -c "ALTER USER tablepp PASSWORD 'tablepp'"
           /opt/homebrew/opt/postgresql@17/bin/createdb -O tablepp tablepp
           /opt/homebrew/opt/postgresql@17/bin/psql -U tablepp -d tablepp -v ON_ERROR_STOP=1 -f Scripts/seed.sql
+          # Homebrew trusts every local connection; require passwords over TCP so the
+          # bad-credentials test means something.
+          sed -i '' -E 's/^(host[[:space:]].*)trust$/\1scram-sha-256/' /opt/homebrew/var/postgresql@17/pg_hba.conf
+          brew services restart postgresql@17
+          for i in $(seq 1 30); do
+            /opt/homebrew/opt/postgresql@17/bin/pg_isready -h localhost -p 5432 && break
+            sleep 1
+          done
       - run: cargo fmt --check
         working-directory: src-tauri
       - run: cargo clippy --all-targets -- -D warnings
