@@ -9,6 +9,7 @@ import { Workspace } from "@/features/workspace/Workspace";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useTheme } from "@/hooks/useTheme";
 import { installBackend } from "@/lib/backend";
+import { useNativeMenu } from "@/lib/menu";
 import { isTauri } from "@/lib/platform";
 import { startApp } from "@/state/actions/app";
 import { useAppStore } from "@/state/store";
@@ -27,6 +28,7 @@ if (!isTauri()) {
 export function App() {
   useTheme();
   useShortcuts();
+  useNativeMenu();
   const ready = useAppStore((s) => s.ready);
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const inspectorOpen = useAppStore((s) => s.inspectorOpen);

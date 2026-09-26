@@ -1,114 +1,71 @@
+// Keyboard shortcuts. In the desktop app most of these are also menu accelerators, which macOS
+// routes through the menu (see `src/lib/menu.ts`); this handler covers the browser preview and
+// the few keys the menu does not own, such as ⌘1–9.
+
 import { useEffect } from "react";
 
 import { modKey } from "@/lib/platform";
-import { explainQuery, runQuery } from "@/state/actions/queryTab";
-import { addRow, commitChanges, discardChanges, loadTable, toggleFilterBar } from "@/state/actions/tableTab";
-import {
-  closeTab,
-  openQuery,
-  selectTabByNumber,
-  selectTabByOffset,
-  tabHasUnsavedWork,
-} from "@/state/actions/workspace";
-import { getState, mutate, openDialog } from "@/state/store";
-import { useSettings } from "@/state/settings";
+import { runCommand, type CommandId } from "@/state/actions/commands";
+import { selectTabByNumber } from "@/state/actions/workspace";
 
-/** Global keyboard shortcuts. Editor-local ones (Cmd+Enter) are handled by the editor itself. */
+interface Shortcut {
+  key: string;
+  shift?: boolean;
+  alt?: boolean;
+  command: CommandId;
+  /** Skip when the SQL editor has focus (it owns the key). */
+  notInEditor?: boolean;
+}
+
+const SHORTCUTS: Shortcut[] = [
+  { key: ",", command: "settings" },
+  { key: "n", shift: true, command: "connection.new" },
+  { key: "t", command: "query.new" },
+  { key: "w", command: "tab.close" },
+  { key: "e", shift: true, command: "export" },
+  { key: "]", shift: true, command: "tab.next" },
+  { key: "[", shift: true, command: "tab.previous" },
+  { key: "b", command: "view.sidebar", notInEditor: true },
+  { key: "i", alt: true, command: "view.inspector" },
+  { key: "r", command: "table.refresh" },
+  { key: "f", shift: true, command: "table.filter" },
+  { key: "n", alt: true, command: "table.addRow" },
+  { key: "s", command: "table.commit" },
+  { key: "z", alt: true, command: "table.discard" },
+  { key: "enter", command: "query.run", notInEditor: true },
+  { key: "enter", shift: true, command: "query.runAll", notInEditor: true },
+  { key: "e", alt: true, command: "query.explain" },
+  { key: "e", alt: true, shift: true, command: "query.explainAnalyze" },
+];
+
+/** The command bound to a key event, if any. Exported for tests. */
+export function shortcutFor(
+  event: { key: string; shiftKey: boolean; altKey: boolean },
+  inEditor: boolean,
+): CommandId | null {
+  const key = event.key.toLowerCase();
+  const match = SHORTCUTS.find(
+    (s) =>
+      s.key === key &&
+      (s.shift ?? false) === event.shiftKey &&
+      (s.alt ?? false) === event.altKey &&
+      !(s.notInEditor && inEditor),
+  );
+  return match?.command ?? null;
+}
+
 export function useShortcuts(): void {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!modKey(event)) return;
-      const key = event.key.toLowerCase();
-      const state = getState();
-      const active = state.tabs.find((t) => t.id === state.activeTabId);
       const inEditor = (event.target as HTMLElement | null)?.closest(".cm-editor") !== null;
-
-      const handled = (() => {
-        if (key === "t" && !event.shiftKey) return openQuery() !== null;
-        if (key === "w" && !event.shiftKey && active) {
-          if (tabHasUnsavedWork(active)) openDialog({ kind: "commit", tabId: active.id });
-          else void closeTab(active.id);
-          return true;
-        }
-        if (key === "n" && event.shiftKey) {
-          openDialog({ kind: "connection", profileId: null });
-          return true;
-        }
-        if (key === ",") {
-          openDialog({ kind: "settings" });
-          return true;
-        }
-        if (key === "]" && event.shiftKey) {
-          selectTabByOffset(1);
-          return true;
-        }
-        if (key === "[" && event.shiftKey) {
-          selectTabByOffset(-1);
-          return true;
-        }
-        if (/^[1-9]$/.test(key) && !event.shiftKey && !inEditor) {
-          selectTabByNumber(Number(key));
-          return true;
-        }
-        if (key === "i" && event.altKey) {
-          mutate((draft) => {
-            draft.inspectorOpen = !draft.inspectorOpen;
-          });
-          return true;
-        }
-        if (key === "b" && !event.shiftKey && !inEditor) {
-          mutate((draft) => {
-            draft.sidebarOpen = !draft.sidebarOpen;
-          });
-          return true;
-        }
-        if (!active) return false;
-        if (active.kind === "table") {
-          if (key === "r") {
-            void loadTable(active.id);
-            return true;
-          }
-          if (key === "s") {
-            if (useSettings.getState().settings.confirmBeforeCommit) {
-              openDialog({ kind: "commit", tabId: active.id });
-            } else void commitChanges(active.id);
-            return true;
-          }
-          if (key === "z" && event.altKey) {
-            discardChanges(active.id);
-            return true;
-          }
-          if (key === "n" && event.altKey) {
-            addRow(active.id);
-            return true;
-          }
-          if (key === "f" && event.shiftKey) {
-            toggleFilterBar(active.id);
-            return true;
-          }
-          if (key === "e" && event.shiftKey) {
-            openDialog({ kind: "export", tabId: active.id });
-            return true;
-          }
-        }
-        if (active.kind === "query") {
-          if (key === "enter" && !inEditor) {
-            void runQuery(active.id, event.shiftKey ? "all" : "current");
-            return true;
-          }
-          if (key === "e" && event.altKey) {
-            void explainQuery(active.id, event.shiftKey);
-            return true;
-          }
-          if (key === "e" && event.shiftKey) {
-            openDialog({ kind: "export", tabId: active.id });
-            return true;
-          }
-        }
-        return false;
-      })();
-
-      if (handled) event.preventDefault();
+      if (/^[1-9]$/.test(event.key) && !event.shiftKey && !event.altKey && !inEditor) {
+        selectTabByNumber(Number(event.key));
+        event.preventDefault();
+        return;
+      }
+      const command = shortcutFor(event, inEditor);
+      if (command !== null && runCommand(command)) event.preventDefault();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);

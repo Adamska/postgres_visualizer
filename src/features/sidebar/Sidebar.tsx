@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Settings,
   Table2,
   WifiOff,
 } from "lucide-react";
@@ -60,15 +61,18 @@ export function Sidebar() {
         ))}
         {closedProfiles.length > 0 && <SavedProfiles profiles={closedProfiles} search={search} />}
       </div>
-      <div className="border-t border-line/70 p-2">
+      <div className="flex items-center gap-1 border-t border-line/70 p-2">
         <button
           type="button"
           onClick={() => openDialog({ kind: "connection", profileId: null })}
-          className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-[12.5px] text-fg-muted hover:bg-fg/6 hover:text-fg"
+          className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-[12.5px] text-fg-muted hover:bg-fg/6 hover:text-fg"
         >
           <Plus className="size-4" />
           New connection
         </button>
+        <IconButton label="Settings (⌘,)" onClick={() => openDialog({ kind: "settings" })}>
+          <Settings className="size-4" />
+        </IconButton>
       </div>
     </aside>
   );

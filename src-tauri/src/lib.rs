@@ -4,9 +4,10 @@
 pub mod commands;
 pub mod db;
 pub mod error;
+pub mod menu;
 pub mod storage;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Builds and runs the Tauri application.
 ///
@@ -20,6 +21,10 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage(db::SessionRegistry::default())
+        .menu(menu::build)
+        .on_menu_event(|app, event| {
+            let _ = app.emit(menu::MENU_EVENT, event.id().0.as_str());
+        })
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(target_os = "macos")]
