@@ -61,6 +61,18 @@ export function SettingsDialog() {
               className="w-24"
             />
           </Row>
+          <Switch
+            checked={settings.relativeTimes}
+            onChange={(v) => void update({ relativeTimes: v })}
+            label="Relative time next to dates"
+            description="“3 h ago” after timestamps in the grid"
+          />
+          <Switch
+            checked={settings.groupDigits}
+            onChange={(v) => void update({ groupDigits: v })}
+            label="Group digits in numbers"
+            description="1,234,567 (identifiers are left alone)"
+          />
           <Row label="Grid font size">
             <Select
               size="sm"
@@ -123,7 +135,7 @@ export function SettingsDialog() {
           </Row>
           <p className="pb-1 text-[11.5px] leading-relaxed text-fg-subtle">
             {settings.passwordStorage === "keychain"
-              ? "The macOS keychain asks for permission until it trusts this build; unsigned builds are trusted per build, so a rebuild asks again. Passwords are read once per launch."
+              ? "macOS asks once per connection whether Table++ may read its password: choose “Always Allow”. Signed builds (make build) keep that permission across updates; unsigned ones ask again after each rebuild. Passwords are read once per launch."
               : "Passwords are kept unencrypted in secrets.json inside the app's data folder, readable only by your user account. No keychain prompts."}
           </p>
         </Section>

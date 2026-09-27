@@ -233,15 +233,16 @@ describe("table tab", () => {
     const tabId = openTable(profile.id, USERS);
     await loadTable(tabId);
     const tab = findTab(tabId, "table")!;
-    expect(foreignKeyTarget(tab, 0, 4)).toEqual({
+    expect(foreignKeyTarget(tab, 0, 4)).toMatchObject({
       table: { schema: "public", name: "teams" },
-      filter: expect.objectContaining({ column: "id", value: "1" }) as unknown,
+      filters: [expect.objectContaining({ column: "id", value: "1" })],
+      values: ["1"],
     });
     expect(foreignKeyTarget(tab, 1, 4)).toBeNull();
     await sortBy(tabId, "email");
     expect(findTab(tabId, "table")?.query.sort).toEqual([{ column: "email", ascending: true }]);
     expect(backend.executed.at(-2)).toContain('ORDER BY "email" ASC');
-    const csv = exportTable({ ...tab, selection: { rows: [1], focused: null } }, "csv", true);
+    const csv = exportTable({ ...tab, selection: { rows: [1], focused: null, range: null } }, "csv", true);
     expect(csv).toBe("id,email,is_active,profile,team_id\n2,bob@example.com,false,,\n");
   });
 
@@ -284,7 +285,10 @@ describe("query tab", () => {
 
   it("runs on a dedicated session, records history and tracks transactions", async () => {
     const profile = await connected();
-    const tabId = openQuery(profile.id, "BEGIN;\nSELECT * FROM users;\nUPDATE users SET a = 1;")!;
+    const tabId = openQuery(
+      profile.id,
+      "BEGIN;\nSELECT * FROM users;\nUPDATE users SET a = 1 WHERE id = 1;",
+    )!;
     await runQuery(tabId, "all");
     const tab = findTab(tabId, "query")!;
     expect(tab.results).toHaveLength(3);
@@ -294,7 +298,11 @@ describe("query tab", () => {
     expect(tab.status).toMatch(/^3 statements in/);
     await flushHistory();
     const history = backend.documents.history as { sql: string }[];
-    expect(history.map((h) => h.sql)).toEqual(["UPDATE users SET a = 1", "SELECT * FROM users", "BEGIN"]);
+    expect(history.map((h) => h.sql)).toEqual([
+      "UPDATE users SET a = 1 WHERE id = 1",
+      "SELECT * FROM users",
+      "BEGIN",
+    ]);
     setQueryText(tabId, "COMMIT;");
     await runQuery(tabId, "all");
     expect(findTab(tabId, "query")?.inTransaction).toBe(false);

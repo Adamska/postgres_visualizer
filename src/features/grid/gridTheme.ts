@@ -22,6 +22,23 @@ export interface GridPalette {
   syntaxBoolean: string;
   success: string;
   danger: string;
+  accent: string;
+  surface: string;
+  line: string;
+  /** Whether the surface is dark, so tinted fills can pick lighter text. */
+  dark: boolean;
+}
+
+/** Whether a `#rrggbb` colour is dark; anything unparsable counts as light. */
+export function isDarkColor(color: string): boolean {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(color.trim());
+  if (!match) return false;
+  const [r, g, b] = [match[1], match[2], match[3]].map((hex) => parseInt(hex ?? "0", 16) / 255) as [
+    number,
+    number,
+    number,
+  ];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5;
 }
 
 /** A realised grid theme: Glide's theme plus the palette used for per-cell overrides. */
@@ -78,6 +95,10 @@ export function buildGridTheme(token: (name: string) => string, fontSize: number
     syntaxBoolean: token("--syntax-boolean"),
     success: token("--success"),
     danger: token("--danger"),
+    accent: token("--accent"),
+    surface: token("--surface"),
+    line: token("--line-strong"),
+    dark: isDarkColor(token("--surface")),
   };
   const theme: Partial<Theme> = {
     accentColor: token("--accent"),

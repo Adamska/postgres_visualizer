@@ -2,6 +2,7 @@
 
 import { toTsv } from "@/core/exchange/export";
 import { isRightAligned, prefersLargeEditor } from "@/core/format/values";
+import type { SelectedValue } from "@/core/stats/selectionStats";
 import type { CellValue, ValueKind } from "@/lib/types";
 
 import type {
@@ -9,6 +10,7 @@ import type {
   GridCellPosition,
   GridColumn,
   GridContent,
+  GridRange,
   GridRow,
   GridRowState,
   GridSelection,
@@ -59,16 +61,42 @@ export interface VisibleColumn {
   index: number;
 }
 
-/** The columns that are not hidden, in content order. */
+/** The columns that are not hidden, in display order (content order unless `order` says otherwise). */
 export function visibleColumns(
   columns: readonly GridColumn[],
   hidden?: ReadonlySet<number> | null,
+  order?: readonly number[] | null,
 ): VisibleColumn[] {
-  const out: VisibleColumn[] = [];
-  columns.forEach((column, index) => {
-    if (!hidden?.has(column.id)) out.push({ column, index });
-  });
-  return out;
+  const entries = columns.map((column, index) => ({ column, index }));
+  if (order && order.length > 0) {
+    const rank = new Map(order.map((id, position) => [id, position]));
+    entries.sort(
+      (a, b) =>
+        (rank.get(a.column.id) ?? order.length + a.index) - (rank.get(b.column.id) ?? order.length + b.index),
+    );
+  }
+  return entries.filter((entry) => !hidden?.has(entry.column.id));
+}
+
+/**
+ * Every column id in display order after dragging the visible column at `from` to `to`; hidden
+ * columns keep their place relative to their visible neighbours.
+ */
+export function movedOrder(
+  columns: readonly GridColumn[],
+  visible: readonly VisibleColumn[],
+  order: readonly number[] | null | undefined,
+  from: number,
+  to: number,
+): number[] {
+  const full = visibleColumns(columns, null, order).map((entry) => entry.column.id);
+  const moving = visible[from]?.column.id;
+  const target = visible[to]?.column.id;
+  if (moving === undefined || target === undefined || moving === target) return full;
+  const without = full.filter((id) => id !== moving);
+  const targetIndex = without.indexOf(target);
+  without.splice(from < to ? targetIndex + 1 : targetIndex, 0, moving);
+  return without;
 }
 
 /** The hidden columns, in content order. */
@@ -91,7 +119,7 @@ export function headerTitle(column: GridColumn, sort: GridSortState | null | und
 }
 
 /** Column widths for the visible columns: user overrides first, then the kind default. */
-export function columnWidths(
+export function resolveColumnWidths(
   visible: readonly VisibleColumn[],
   overrides: ReadonlyMap<number, number>,
 ): number[] {
@@ -230,17 +258,83 @@ export function toGridSelection(
   current: readonly [col: number, row: number] | undefined,
   selectedRows: readonly number[],
   visible: readonly VisibleColumn[],
+  rect?: CellRect,
 ): GridSelection {
   const entry = current ? visible[current[0]] : undefined;
   const focused = current && entry ? { row: current[1], column: entry.index } : null;
   const rows = selectedRows.length > 0 ? [...selectedRows] : focused ? [focused.row] : [];
-  return { rows, focused };
+  let range: GridRange | null = null;
+  if (rect && focused && selectedRows.length === 0) {
+    const columns = visible.slice(rect.x, rect.x + rect.width).map((v) => v.index);
+    if (columns.length > 0) range = { rowStart: rect.y, rowEnd: rect.y + rect.height, columns };
+  }
+  return { rows, focused, range };
+}
+
+function sameRange(a: GridRange | null, b: GridRange | null): boolean {
+  if (a === null || b === null) return a === b;
+  return (
+    a.rowStart === b.rowStart &&
+    a.rowEnd === b.rowEnd &&
+    a.columns.length === b.columns.length &&
+    a.columns.every((column, i) => column === b.columns[i])
+  );
 }
 
 export function sameSelection(a: GridSelection, b: GridSelection): boolean {
   if (a.rows.length !== b.rows.length || a.rows.some((row, i) => row !== b.rows[i])) return false;
+  if (!sameRange(a.range, b.range)) return false;
   if (a.focused === null || b.focused === null) return a.focused === b.focused;
   return a.focused.row === b.focused.row && a.focused.column === b.focused.column;
+}
+
+/** Cells a selection covers, as (row, content column) pairs: the range, else whole selected rows. */
+export function selectedCells(selection: GridSelection, columnCount: number): GridCellPosition[] {
+  const out: GridCellPosition[] = [];
+  if (selection.range) {
+    for (let row = selection.range.rowStart; row < selection.range.rowEnd; row++) {
+      for (const column of selection.range.columns) out.push({ row, column });
+    }
+    return out;
+  }
+  if (selection.rows.length > 1) {
+    for (const row of selection.rows) {
+      for (let column = 0; column < columnCount; column++) out.push({ row, column });
+    }
+  }
+  return out;
+}
+
+/** Values of the selected cells; DEFAULT cells are skipped. */
+export function selectedValues(content: GridContent, selection: GridSelection): SelectedValue[] {
+  return selectedCells(selection, content.columns.length).flatMap(({ row, column }) => {
+    const cell = content.rows[row]?.cells[column];
+    const kind = content.columns[column]?.kind;
+    if (!cell || kind === undefined || cell.isDefault) return [];
+    return [{ value: cell.raw ?? null, kind }];
+  });
+}
+
+/** Cells whose text contains `needle` (case-insensitive), as grid rectangles; capped. */
+export function matchingCells(
+  content: GridContent,
+  visible: readonly VisibleColumn[],
+  needle: string,
+  limit = 2000,
+): CellRect[] {
+  const term = needle.trim().toLowerCase();
+  if (term === "") return [];
+  const out: CellRect[] = [];
+  for (let row = 0; row < content.rows.length && out.length < limit; row++) {
+    const gridRow = content.rows[row];
+    visible.forEach((entry, x) => {
+      const cell = gridRow?.cells[entry.index];
+      if (cell && !cell.isNull && (cell.raw ?? "").toLowerCase().includes(term)) {
+        out.push({ x, y: row, width: 1, height: 1 });
+      }
+    });
+  }
+  return out.slice(0, limit);
 }
 
 /** Rows a delete acts on: the marker selection, else the focused row. */

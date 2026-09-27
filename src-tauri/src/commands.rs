@@ -5,7 +5,9 @@
 
 use tauri::State;
 
-use crate::db::catalog::{self, FunctionInfo, RelationInfo, SchemaInfo, TableStructure};
+use crate::db::catalog::{
+    self, FunctionInfo, RelationInfo, SchemaGraph, SchemaInfo, TableStructure,
+};
 use crate::db::connect::ConnectionParams;
 use crate::db::execute::{self, QueryResult};
 use crate::db::SessionRegistry;
@@ -143,6 +145,17 @@ pub async fn table_structure(
 ) -> AppResult<TableStructure> {
     let session = registry.get(&session_id).await?;
     catalog::structure(&session, &schema, &name).await
+}
+
+/// Loads the tables and foreign keys of a schema for the ER diagram.
+#[tauri::command]
+pub async fn schema_graph(
+    registry: State<'_, SessionRegistry>,
+    session_id: String,
+    schema: String,
+) -> AppResult<SchemaGraph> {
+    let session = registry.get(&session_id).await?;
+    catalog::schema_graph(&session, &schema).await
 }
 
 /// Reads a JSON document from the app data directory.

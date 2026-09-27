@@ -1,7 +1,9 @@
 // Contract between the data grid component and the models that feed it.
 
 import type { EditValue } from "@/core/changes/changeSet";
+import type { RichValue } from "@/core/format/rich";
 import type { JsonSegment } from "@/core/json/preview";
+import type { FilterOperator } from "@/core/query/tableQuery";
 import type { CellValue, ValueKind } from "@/lib/types";
 
 /** One column of the grid. `id` is the column index in the underlying result set. */
@@ -34,6 +36,8 @@ export interface GridCell {
   json: JsonSegment[] | null;
   /** Parsed value for boolean columns; `null` for other kinds, NULL and unparsable text. */
   boolean: boolean | null;
+  /** Richer rendering (timestamps, UUIDs, enums, arrays, colours…); `null` for plain text. */
+  rich: RichValue | null;
 }
 
 export interface GridRow {
@@ -60,10 +64,37 @@ export interface GridSortState {
   ascending: boolean;
 }
 
+/** A rectangle of selected cells in content coordinates. */
+export interface GridRange {
+  rowStart: number;
+  /** Exclusive. */
+  rowEnd: number;
+  /** Content column indices, in display order. */
+  columns: number[];
+}
+
 export interface GridSelection {
   rows: number[];
   focused: GridCellPosition | null;
+  /** The selected rectangle of cells, when there is one. */
+  range: GridRange | null;
 }
+
+export const EMPTY_SELECTION: GridSelection = { rows: [], focused: null, range: null };
+
+/** Screen-space rectangle (client coordinates). */
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Filters offered from a cell's context menu. */
+export type ValueFilter = Extract<
+  FilterOperator,
+  "equals" | "notEquals" | "greaterThan" | "lessThan" | "isNull" | "isNotNull"
+>;
 
 /** Callbacks from the grid to its owner. */
 export interface GridActions {
@@ -74,15 +105,34 @@ export interface GridActions {
   /** The user asked for the large editor or viewer (multi-line or JSON values). */
   onOpenEditor?: (position: GridCellPosition) => void;
   onDeleteRows?: (rows: number[]) => void;
-  onFollowForeignKey?: (position: GridCellPosition) => void;
+  /** Follows the foreign key of a cell, in place or in a new tab. */
+  onFollowForeignKey?: (position: GridCellPosition, newTab: boolean) => void;
   onToggleColumnVisibility?: (columnId: number) => void;
   onColumnResize?: (columnId: number, width: number) => void;
+  /** A column was dragged; `order` holds every column id in the new display order. */
+  onColumnMove?: (order: number[]) => void;
+  /** Keep this many leading visible columns in place. */
+  onFreezeColumns?: (count: number) => void;
+  /** The header's menu button (or "Profile column") was used. */
+  onColumnProfile?: (column: GridColumn, bounds: Bounds) => void;
+  /** The pointer rests on a cell, or left the cells (`null`). */
+  onCellHover?: (hover: { position: GridCellPosition; bounds: Bounds } | null) => void;
+  /** Filters the rows on the value of a cell. */
+  onFilterValue?: (position: GridCellPosition, filter: ValueFilter) => void;
 }
 
 export interface DataGridProps {
   content: GridContent;
   sort?: GridSortState | null;
   hiddenColumnIds?: ReadonlySet<number>;
+  /** Column ids in display order; natural order when absent. */
+  columnOrder?: readonly number[];
+  /** Widths chosen by the user, by column id. */
+  columnWidths?: ReadonlyMap<number, number>;
+  /** Leading visible columns kept in place while scrolling sideways. */
+  frozenColumns?: number;
+  /** Cells containing this text (case-insensitive) are highlighted. */
+  highlight?: string;
   /** When set, the grid moves focus there (e.g. after adding a row). */
   focusRequest?: GridCellPosition | null;
   fontSize?: number;

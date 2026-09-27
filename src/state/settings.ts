@@ -17,6 +17,12 @@ export interface Settings {
   showSystemSchemas: boolean;
   confirmBeforeCommit: boolean;
   passwordStorage: PasswordStorage;
+  /** "3 h ago" after dates and timestamps in the grid. */
+  relativeTimes: boolean;
+  /** Thousands separators for numbers in the grid (identifiers excluded). */
+  groupDigits: boolean;
+  /** Connection groups folded in the sidebar. */
+  collapsedGroups: string[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -29,6 +35,9 @@ export const DEFAULT_SETTINGS: Settings = {
   showSystemSchemas: false,
   confirmBeforeCommit: true,
   passwordStorage: "keychain",
+  relativeTimes: true,
+  groupDigits: true,
+  collapsedGroups: [],
 };
 
 interface SettingsStore {

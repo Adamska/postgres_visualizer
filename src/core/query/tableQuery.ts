@@ -66,6 +66,8 @@ export interface TableQuery {
   table: TableRef;
   filters: Filter[];
   rawWhere: string;
+  /** Free text matched against every column of the row. */
+  search: string;
   sort: SortDescriptor[];
   page: number;
   pageSize: number;
@@ -78,7 +80,12 @@ export function newFilter(column: string, op: FilterOperator = "equals", value =
 }
 
 export function newTableQuery(table: TableRef, pageSize = 200, filters: Filter[] = []): TableQuery {
-  return { table, filters, rawWhere: "", sort: [], page: 0, pageSize };
+  return { table, filters, rawWhere: "", search: "", sort: [], page: 0, pageSize };
+}
+
+/** Fills fields missing from queries saved by older versions. */
+export function normalizeTableQuery(query: Omit<TableQuery, "search"> & { search?: string }): TableQuery {
+  return { ...query, search: query.search ?? "" };
 }
 
 function escapeLike(value: string): string {
@@ -135,10 +142,17 @@ export function filterPredicate(filter: Filter): string {
   }
 }
 
+/** Matches the text form of the whole row, so every column is searched without listing them. */
+export function searchPredicate(table: TableRef, term: string): string {
+  return `ROW(${quoteIdent(table.name)}.*)::text ILIKE ${quoteLiteral(`%${escapeLike(term)}%`)}`;
+}
+
 export function whereClause(query: TableQuery): string | null {
   const predicates = query.filters
     .filter((f) => f.enabled && (!operatorNeedsValue(f.op) || f.value !== ""))
     .map(filterPredicate);
+  const search = query.search.trim();
+  if (search !== "") predicates.push(searchPredicate(query.table, search));
   const raw = query.rawWhere.trim();
   if (raw !== "") predicates.push(`(${raw})`);
   return predicates.length === 0 ? null : predicates.join(" AND ");
@@ -160,6 +174,23 @@ export function pageSql(query: TableQuery, defaultOrder: string[]): string {
   if (order.length > 0) sql += `\nORDER BY ${order.join(", ")}`;
   sql += `\nLIMIT ${query.pageSize} OFFSET ${query.page * query.pageSize}`;
   return sql;
+}
+
+/** A sample of one column's values under the current filters, for its profile. */
+export function columnSampleSql(query: TableQuery, column: string, limit: number): string {
+  const where = whereClause(query);
+  return `SELECT ${quoteIdent(column)} FROM ${qualifiedName(query.table)}${where ? `\nWHERE ${where}` : ""}\nLIMIT ${limit}`;
+}
+
+/** Rows whose key columns equal the given values. */
+export function lookupSql(
+  table: TableRef,
+  columns: readonly string[],
+  values: readonly string[],
+  limit: number,
+): string {
+  const predicates = columns.map((column, i) => `${quoteIdent(column)} = ${quoteLiteral(values[i] ?? "")}`);
+  return `SELECT * FROM ${qualifiedName(table)} WHERE ${predicates.join(" AND ")} LIMIT ${limit}`;
 }
 
 export function countSql(query: TableQuery): string {

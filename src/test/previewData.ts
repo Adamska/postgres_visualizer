@@ -3,14 +3,40 @@
 import { newProfile } from "@/core/connection/url";
 
 import type { MockBackend } from "./mockBackend";
+import {
+  CUSTOMERS_STRUCTURE,
+  ORDERS_STRUCTURE,
+  PREVIEW_GRAPH,
+  PREVIEW_RELATIONS,
+  previewResolve,
+} from "./previewDataset";
+
+/** Adds the orders and customers tables, reports and statistics to the mock. */
+function extendMock(mock: MockBackend): void {
+  mock.resolve = previewResolve;
+  const { listRelations, tableStructure } = mock;
+  mock.listRelations = async (sessionId, schema) => [
+    ...(schema === "public" ? PREVIEW_RELATIONS : []),
+    ...(await listRelations(sessionId, schema)),
+  ];
+  mock.tableStructure = (sessionId, schema, name) => {
+    if (schema === "public" && name === "orders") return Promise.resolve(ORDERS_STRUCTURE);
+    if (schema === "public" && name === "customers") return Promise.resolve(CUSTOMERS_STRUCTURE);
+    return tableStructure(sessionId, schema, name);
+  };
+  mock.schemaGraph = (_sessionId, schema) =>
+    Promise.resolve(schema === "public" ? PREVIEW_GRAPH : { schema, tables: [], foreignKeys: [] });
+}
 
 export function installPreviewData(mock: MockBackend): void {
   if (window.location.search.includes("empty")) return;
+  extendMock(mock);
   const local = newProfile({
     id: "preview-local",
     name: "Local dev",
     color: "blue",
     group: null,
+    environment: "development",
     lastConnectedAt: new Date().toISOString(),
   });
   const prod = newProfile({
@@ -20,6 +46,7 @@ export function installPreviewData(mock: MockBackend): void {
     color: "red",
     group: "Production",
     sslMode: "require",
+    environment: "production",
   });
   const staging = newProfile({
     id: "preview-staging",
@@ -27,6 +54,8 @@ export function installPreviewData(mock: MockBackend): void {
     host: "staging.internal",
     color: "orange",
     group: "Production",
+    environment: "staging",
+    readOnly: true,
   });
   mock.documents.connections = [local, prod, staging];
   mock.documents.workspace = {
@@ -34,6 +63,18 @@ export function installPreviewData(mock: MockBackend): void {
       {
         profileId: local.id,
         tabs: [
+          {
+            kind: "table",
+            query: {
+              table: { schema: "public", name: "orders" },
+              filters: [],
+              rawWhere: "",
+              search: "",
+              sort: [],
+              page: 0,
+              pageSize: 200,
+            },
+          },
           {
             kind: "table",
             query: {

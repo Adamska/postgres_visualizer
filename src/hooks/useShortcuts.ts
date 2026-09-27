@@ -18,6 +18,7 @@ interface Shortcut {
 }
 
 const SHORTCUTS: Shortcut[] = [
+  { key: "k", command: "palette" },
   { key: ",", command: "settings" },
   { key: "n", shift: true, command: "connection.new" },
   { key: "t", command: "query.new" },
@@ -36,6 +37,10 @@ const SHORTCUTS: Shortcut[] = [
   { key: "enter", shift: true, command: "query.runAll", notInEditor: true },
   { key: "e", alt: true, command: "query.explain" },
   { key: "e", alt: true, shift: true, command: "query.explainAnalyze" },
+  { key: "f", alt: true, command: "query.format" },
+  { key: "f", command: "table.search", notInEditor: true },
+  { key: "[", command: "nav.back", notInEditor: true },
+  { key: "]", command: "nav.forward", notInEditor: true },
 ];
 
 /** The command bound to a key event, if any. Exported for tests. */

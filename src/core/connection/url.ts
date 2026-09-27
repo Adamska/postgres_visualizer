@@ -15,10 +15,28 @@ export function newProfile(overrides: Partial<ConnectionProfile> = {}): Connecti
     sslMode: "disable",
     color: "none",
     group: null,
+    environment: "none",
+    readOnly: false,
     createdAt: new Date().toISOString(),
     lastConnectedAt: null,
     ...overrides,
   };
+}
+
+/** Fills fields missing from profiles saved by older versions. */
+export function normalizeProfile(
+  profile: Omit<ConnectionProfile, "environment" | "readOnly"> &
+    Partial<Pick<ConnectionProfile, "environment" | "readOnly">>,
+): ConnectionProfile {
+  return {
+    ...profile,
+    environment: profile.environment ?? "none",
+    readOnly: profile.readOnly ?? false,
+  };
+}
+
+export function isProduction(profile: ConnectionProfile): boolean {
+  return profile.environment === "production";
 }
 
 export function sslModeFromLibpq(value: string): SslMode | null {

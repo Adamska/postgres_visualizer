@@ -60,6 +60,12 @@
   --syntax-string: #1a7f4b;
   --syntax-number: #1d5bd6;
   --syntax-boolean: #8b3fc7;
+  /* Chart series, validated for colour-vision deficiencies in this order. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
 }
 
 :root[data-theme="dark"] {
@@ -87,4 +93,9 @@
   --syntax-string: #6fcf97;
   --syntax-number: #7ea4ff;
   --syntax-boolean: #c58af9;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
 }

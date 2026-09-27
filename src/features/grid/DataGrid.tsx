@@ -21,6 +21,7 @@ import { cn } from "@/lib/cn";
 import { copyText } from "@/lib/files";
 
 import { CellContextMenu, type MenuContext, type MenuTarget } from "./CellContextMenu";
+import { isRichGridCell, richCellRenderer, type RichGridCell } from "./richCell";
 import { HeaderTooltip, type HeaderHover } from "./HeaderTooltip";
 import {
   BASE_FONT_SIZE,
@@ -30,11 +31,13 @@ import {
   canSetNull,
   cellDisplayText,
   cellStyle,
-  columnWidths,
+  resolveColumnWidths,
   contentAlignFor,
   editModeFor,
   gridColumnOf,
   headerTitle,
+  matchingCells,
+  movedOrder,
   rowHeightFor,
   rowsForDeletion,
   sameSelection,
@@ -44,9 +47,10 @@ import {
 import { buildCellThemes, buildRowThemes, useGridTheme } from "./gridTheme";
 import { booleanCellRenderer, isBooleanGridCell, type BooleanGridCell } from "./booleanCell";
 import { isJsonGridCell, jsonCellRenderer, type JsonGridCell } from "./jsonCell";
-import type { DataGridProps, GridSelection } from "./types";
+import { EMPTY_SELECTION as EMPTY_GRID_SELECTION, type DataGridProps, type GridSelection } from "./types";
 
 const EMPTY_SELECTION: GlideSelection = { columns: CompactSelection.empty(), rows: CompactSelection.empty() };
+const NO_WIDTHS: ReadonlyMap<number, number> = new Map();
 
 const HEADER_ICONS = {
   key: ({ fgColor }: { fgColor: string; bgColor: string }) =>
@@ -58,6 +62,10 @@ export function DataGrid({
   content,
   sort = null,
   hiddenColumnIds,
+  columnOrder,
+  columnWidths = NO_WIDTHS,
+  frozenColumns = 0,
+  highlight = "",
   focusRequest = null,
   fontSize = BASE_FONT_SIZE,
   actions,
@@ -68,27 +76,42 @@ export function DataGrid({
   const { theme, palette } = useGridTheme(fontSize);
   const cellThemes = useMemo(() => buildCellThemes(palette, fontSize), [palette, fontSize]);
   const rowThemes = useMemo(() => buildRowThemes(palette), [palette]);
-  const customRenderers = useMemo(() => [jsonCellRenderer(palette), booleanCellRenderer(palette)], [palette]);
-  const visible = useMemo(
-    () => visibleColumns(content.columns, hiddenColumnIds),
-    [content.columns, hiddenColumnIds],
+  const customRenderers = useMemo(
+    () => [jsonCellRenderer(palette), booleanCellRenderer(palette), richCellRenderer(palette)],
+    [palette],
   );
-  const [widths, setWidths] = useState<ReadonlyMap<number, number>>(() => new Map());
+  const visible = useMemo(
+    () => visibleColumns(content.columns, hiddenColumnIds, columnOrder),
+    [content.columns, hiddenColumnIds, columnOrder],
+  );
+  const [localWidths, setLocalWidths] = useState<ReadonlyMap<number, number>>(() => new Map());
   const [selection, setSelection] = useState<GlideSelection>(EMPTY_SELECTION);
   const [menuTarget, setMenuTarget] = useState<MenuTarget | null>(null);
   const [hover, setHover] = useState<HeaderHover | null>(null);
-  const lastReported = useRef<GridSelection>({ rows: [], focused: null });
+  const lastReported = useRef<GridSelection>(EMPTY_GRID_SELECTION);
+  const hasProfile = actions?.onColumnProfile !== undefined;
 
+  const widths = useMemo(() => new Map([...columnWidths, ...localWidths]), [columnWidths, localWidths]);
   const glideColumns = useMemo<GlideColumn[]>(() => {
-    const sizes = columnWidths(visible, widths);
+    const sizes = resolveColumnWidths(visible, widths);
     return visible.map(({ column }, index) => ({
       id: String(column.id),
       title: headerTitle(column, sort),
       width: sizes[index] ?? 160,
       icon: column.isPrimaryKey ? "key" : undefined,
-      hasMenu: false,
+      hasMenu: hasProfile,
     }));
-  }, [visible, widths, sort]);
+  }, [visible, widths, sort, hasProfile]);
+
+  const highlightRegions = useMemo(
+    () =>
+      matchingCells(content, visible, highlight).map((rect) => ({
+        color: palette.accentSoft,
+        range: rect,
+        style: "solid-outline" as const,
+      })),
+    [content, visible, highlight, palette.accentSoft],
+  );
 
   // Reset selection when the content changes shape (new result set).
   const rowCount = content.rows.length;
@@ -132,6 +155,17 @@ export function DataGrid({
         };
         return booleanCell;
       }
+      if (cell.rich !== null && cell.raw !== null && cell.raw !== undefined) {
+        const richCell: RichGridCell = {
+          kind: GridCellKind.Custom,
+          data: { kind: "rich-value", raw: cell.raw, value: cell.rich },
+          copyData: cell.raw,
+          allowOverlay: mode === "inline",
+          readonly: mode !== "inline",
+          themeOverride: cellThemes[style],
+        };
+        return richCell;
+      }
       return {
         kind: GridCellKind.Text,
         data: cell.raw ?? "",
@@ -155,7 +189,7 @@ export function DataGrid({
 
   const reportSelection = useCallback(
     (next: GlideSelection) => {
-      const mapped = toGridSelection(next.current?.cell, next.rows.toArray(), visible);
+      const mapped = toGridSelection(next.current?.cell, next.rows.toArray(), visible, next.current?.range);
       if (!sameSelection(mapped, lastReported.current)) {
         lastReported.current = mapped;
         actions?.onSelectionChange?.(mapped);
@@ -180,7 +214,7 @@ export function DataGrid({
       if (newValue.kind === GridCellKind.Text) value = newValue.data;
       else if (
         newValue.kind === GridCellKind.Custom &&
-        (isJsonGridCell(newValue) || isBooleanGridCell(newValue))
+        (isJsonGridCell(newValue) || isBooleanGridCell(newValue) || isRichGridCell(newValue))
       ) {
         value = newValue.data.raw;
       } else return;
@@ -293,9 +327,11 @@ export function DataGrid({
   );
 
   const onHeaderContextMenu = useCallback(
-    (col: number) => {
+    (col: number, event: { bounds: Rectangle }) => {
       const entry = visible[col];
-      setMenuTarget(entry ? { kind: "header", column: entry.column } : null);
+      setMenuTarget(
+        entry ? { kind: "header", column: entry.column, gridColumn: col, bounds: event.bounds } : null,
+      );
     },
     [visible],
   );
@@ -311,18 +347,48 @@ export function DataGrid({
   const onColumnResize = useCallback(
     (column: GlideColumn, newSize: number) => {
       const id = Number(column.id);
-      setWidths((current) => new Map(current).set(id, newSize));
+      setLocalWidths((current) => new Map(current).set(id, newSize));
       actions?.onColumnResize?.(id, newSize);
     },
     [actions],
+  );
+
+  const onColumnMoved = useCallback(
+    (from: number, to: number) => {
+      actions?.onColumnMove?.(movedOrder(content.columns, visible, columnOrder, from, to));
+    },
+    [actions, content.columns, visible, columnOrder],
+  );
+
+  const onHeaderMenuClick = useCallback(
+    (col: number, bounds: Rectangle) => {
+      const entry = visible[col];
+      if (entry) actions?.onColumnProfile?.(entry.column, bounds);
+    },
+    [visible, actions],
   );
 
   const onItemHovered = useCallback(
     (args: { kind: string; location: Item; bounds?: Rectangle }) => {
       const entry = args.kind === "header" ? visible[args.location[0]] : undefined;
       setHover(entry && args.bounds ? { column: entry.column, bounds: args.bounds } : null);
+      const cellEntry = args.kind === "cell" ? visible[args.location[0]] : undefined;
+      actions?.onCellHover?.(
+        cellEntry && args.bounds
+          ? { position: { row: args.location[1], column: cellEntry.index }, bounds: args.bounds }
+          : null,
+      );
     },
-    [visible],
+    [visible, actions],
+  );
+
+  const onCellClicked = useCallback(
+    (item: Item, event: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) => {
+      const entry = visible[item[0]];
+      if (!entry?.column.isForeignKey || !(event.metaKey || event.ctrlKey)) return;
+      actions?.onFollowForeignKey?.({ row: item[1], column: entry.index }, event.shiftKey);
+    },
+    [visible, actions],
   );
 
   useEffect(() => {
@@ -348,6 +414,7 @@ export function DataGrid({
     content,
     visible,
     hiddenColumnIds,
+    frozenColumns,
     selectedRows: selection.rows.toArray(),
     readOnly,
     actions,
@@ -356,7 +423,11 @@ export function DataGrid({
 
   return (
     <CellContextMenu context={menuContext} onOpenChange={(open) => !open && setMenuTarget(null)}>
-      <div className={cn("relative h-full w-full overflow-hidden", className)} data-testid="data-grid">
+      <div
+        className={cn("relative h-full w-full overflow-hidden", className)}
+        data-testid="data-grid"
+        onMouseLeave={() => actions?.onCellHover?.(null)}
+      >
         <DataEditor
           ref={ref}
           columns={glideColumns}
@@ -371,7 +442,12 @@ export function DataGrid({
           onHeaderContextMenu={onHeaderContextMenu}
           onHeaderClicked={onHeaderClicked}
           onColumnResize={onColumnResize}
+          onColumnMoved={actions?.onColumnMove ? onColumnMoved : undefined}
+          onHeaderMenuClick={onHeaderMenuClick}
           onItemHovered={onItemHovered}
+          onCellClicked={onCellClicked}
+          freezeColumns={Math.min(frozenColumns, visible.length)}
+          highlightRegions={highlightRegions.length > 0 ? highlightRegions : undefined}
           gridSelection={selection}
           onGridSelectionChange={onGridSelectionChange}
           getCellsForSelection

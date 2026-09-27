@@ -52,6 +52,7 @@ const structure: TableStructure = {
   indexes: [],
   constraints: [],
   foreignKeys: [],
+  referencedBy: [],
 };
 
 const names = ["id", "name", "email"];

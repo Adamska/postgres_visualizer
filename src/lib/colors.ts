@@ -14,3 +14,8 @@ export const PROFILE_COLORS: Record<ProfileColor, string | null> = {
   pink: "#ec4899",
   gray: "#9ca3af",
 };
+
+/** Colour marking a production connection: its own, or red when it has none. */
+export function productionColor(color: ProfileColor): string {
+  return PROFILE_COLORS[color] ?? "#ef4444";
+}

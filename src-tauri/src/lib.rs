@@ -56,6 +56,7 @@ pub fn run() {
             commands::list_relations,
             commands::list_functions,
             commands::table_structure,
+            commands::schema_graph,
             commands::load_document,
             commands::save_document,
             commands::get_password,

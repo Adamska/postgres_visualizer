@@ -129,6 +129,17 @@ export interface ForeignKeyInfo {
   referencedColumns: string[];
 }
 
+/** A foreign key of another table pointing at this one. */
+export interface ReferencingKey {
+  name: string;
+  schema: string;
+  table: string;
+  /** Columns of the referencing table. */
+  columns: string[];
+  /** Columns of this table they point at. */
+  referencedColumns: string[];
+}
+
 export interface TableStructure {
   schema: string;
   name: string;
@@ -138,12 +149,46 @@ export interface TableStructure {
   indexes: IndexInfo[];
   constraints: ConstraintInfo[];
   foreignKeys: ForeignKeyInfo[];
+  referencedBy: ReferencingKey[];
+}
+
+export interface GraphColumn {
+  name: string;
+  typeName: string;
+  isPrimaryKey: boolean;
+  isNullable: boolean;
+}
+
+export interface GraphTable {
+  name: string;
+  kind: RelationKind;
+  estimatedRows: number | null;
+  columns: GraphColumn[];
+}
+
+export interface GraphForeignKey {
+  name: string;
+  table: string;
+  columns: string[];
+  referencedSchema: string;
+  referencedTable: string;
+  referencedColumns: string[];
+}
+
+/** Tables of a schema and their foreign keys, for the ER diagram. */
+export interface SchemaGraph {
+  schema: string;
+  tables: GraphTable[];
+  foreignKeys: GraphForeignKey[];
 }
 
 // App-level models
 
 export type ProfileColor =
   "none" | "red" | "orange" | "yellow" | "green" | "teal" | "blue" | "purple" | "pink" | "gray";
+
+/** How carefully a connection is treated: production gets a tinted window and confirmations. */
+export type ConnectionEnvironment = "none" | "development" | "staging" | "production";
 
 export interface ConnectionProfile {
   id: string;
@@ -155,6 +200,9 @@ export interface ConnectionProfile {
   sslMode: SslMode;
   color: ProfileColor;
   group: string | null;
+  environment: ConnectionEnvironment;
+  /** Sessions are opened read-only and writes are refused. */
+  readOnly: boolean;
   createdAt: string;
   lastConnectedAt: string | null;
 }

@@ -25,6 +25,8 @@ const FILE_ITEMS: &[Item] = &[
 ];
 
 const VIEW_ITEMS: &[Item] = &[
+    ("palette", "Command Palette…", Some("CmdOrCtrl+K")),
+    ("", "", None),
     ("view.sidebar", "Toggle Sidebar", Some("CmdOrCtrl+B")),
     (
         "view.inspector",
@@ -38,11 +40,23 @@ const VIEW_ITEMS: &[Item] = &[
         Some("CmdOrCtrl+Shift+BracketLeft"),
     ),
     ("tab.next", "Next Tab", Some("CmdOrCtrl+Shift+BracketRight")),
+    ("", "", None),
+    ("view.diagram", "ER Diagram", None),
+    ("view.server", "Server Activity", None),
+    ("view.health", "Table & Index Health", None),
 ];
 
+// Back, forward and search keep their shortcuts out of the menu so the SQL editor still receives
+// ⌘[, ⌘] and ⌘F (indent, outdent, find); the front end handles them outside the editor.
 const TABLE_ITEMS: &[Item] = &[
     ("table.refresh", "Refresh", Some("CmdOrCtrl+R")),
     ("table.filter", "Toggle Filters", Some("CmdOrCtrl+Shift+F")),
+    ("table.search", "Search Rows", None),
+    ("", "", None),
+    ("nav.back", "Back", None),
+    ("nav.forward", "Forward", None),
+    ("table.form", "Toggle Form View", None),
+    ("table.saveView", "Save View…", None),
     ("", "", None),
     ("table.addRow", "Add Row", Some("Alt+CmdOrCtrl+N")),
     ("table.commit", "Commit Changes…", Some("CmdOrCtrl+S")),
@@ -59,6 +73,10 @@ const QUERY_ITEMS: &[Item] = &[
         "Explain Analyze",
         Some("Alt+CmdOrCtrl+Shift+E"),
     ),
+    ("", "", None),
+    ("query.format", "Format SQL", Some("Alt+CmdOrCtrl+F")),
+    ("query.chart", "Chart Result", None),
+    ("query.pin", "Pin Result", None),
 ];
 
 fn submenu<R: Runtime>(

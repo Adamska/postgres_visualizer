@@ -146,6 +146,16 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         const main = viewRef.current?.state.selection.main;
         return main ? { anchor: main.anchor, head: main.head } : { anchor: 0, head: 0 };
       },
+      replaceRange: (from: number, to: number, text: string) => {
+        const view = viewRef.current;
+        if (!view) return;
+        const range = clampRange(from, to, view.state.doc.length);
+        view.dispatch({
+          changes: { from: range.from, to: range.to, insert: text },
+          selection: EditorSelection.range(range.from, range.from + text.length),
+          scrollIntoView: true,
+        });
+      },
     }),
     [],
   );

@@ -5,7 +5,7 @@ import { shortcutFor } from "@/hooks/useShortcuts";
 import { installBackend } from "@/lib/backend";
 import { createMockBackend, USERS, type MockBackend } from "@/test/mockBackend";
 
-import { COMMAND_IDS, isCommandId, runCommand } from "./actions/commands";
+import { COMMAND_IDS, isCommandAvailable, isCommandId, runCommand } from "./actions/commands";
 import { connect } from "./actions/connections";
 import { clearPasswordCache, saveProfile } from "./actions/profiles";
 import { loadTable } from "./actions/tableTab";
@@ -35,6 +35,10 @@ describe("commands", () => {
     expect(shortcutFor({ key: "Enter", shiftKey: false, altKey: false }, true)).toBeNull();
     expect(shortcutFor({ key: "Enter", shiftKey: true, altKey: false }, false)).toBe("query.runAll");
     expect(shortcutFor({ key: "x", shiftKey: false, altKey: false }, false)).toBeNull();
+    expect(shortcutFor({ key: "k", shiftKey: false, altKey: false }, true)).toBe("palette");
+    expect(shortcutFor({ key: "[", shiftKey: false, altKey: false }, false)).toBe("nav.back");
+    expect(shortcutFor({ key: "[", shiftKey: false, altKey: false }, true)).toBeNull();
+    expect(shortcutFor({ key: "f", shiftKey: false, altKey: true }, true)).toBe("query.format");
   });
 
   it("opens dialogs and toggles panels without a connection", () => {
@@ -49,6 +53,10 @@ describe("commands", () => {
     expect(runCommand("query.new")).toBe(false);
     expect(runCommand("table.refresh")).toBe(false);
     expect(runCommand("export")).toBe(false);
+    expect(isCommandAvailable("palette")).toBe(true);
+    expect(isCommandAvailable("nav.back")).toBe(false);
+    expect(runCommand("palette")).toBe(true);
+    expect(getState().dialog).toEqual({ kind: "palette" });
   });
 
   it("acts on the active tab", async () => {

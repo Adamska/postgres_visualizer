@@ -1,11 +1,15 @@
 // Builds the grid snapshot from a result set, the table structure and staged changes.
 
 import { isTableEditable, rowIdentity, type ChangeSet, type EditValue } from "@/core/changes/changeSet";
+import { richValue, type RichOptions } from "@/core/format/rich";
 import { booleanValue, gridText } from "@/core/format/values";
 import { previewSegments, segmentsText, type JsonSegment } from "@/core/json/preview";
 import { jsonValueOf } from "@/core/json/tree";
 import type { GridCell, GridColumn, GridContent, GridRow } from "@/features/grid/types";
 import type { CellValue, QueryResult, TableStructure } from "@/lib/types";
+
+/** Plain rendering everywhere; used where rich cells are not wanted. */
+export const PLAIN_OPTIONS: RichOptions = { relativeTimes: false, groupDigits: false };
 
 export function gridColumns(result: QueryResult, structure: TableStructure | null): GridColumn[] {
   const editable = structure ? isTableEditable(structure) : false;
@@ -17,9 +21,7 @@ export function gridColumns(result: QueryResult, structure: TableStructure | nul
       typeName: info?.typeName ?? column.typeName,
       kind: info?.kind ?? column.kind,
       isPrimaryKey: info?.isPrimaryKey ?? false,
-      isForeignKey:
-        structure?.foreignKeys.some((fk) => fk.columns.length === 1 && fk.columns[0] === column.name) ??
-        false,
+      isForeignKey: structure?.foreignKeys.some((fk) => fk.columns.includes(column.name)) ?? false,
       isNullable: info?.isNullable ?? true,
       isEditable: editable && info !== undefined && !info.isGenerated,
       enumValues: info?.enumValues ?? null,
@@ -33,107 +35,90 @@ function jsonPreview(value: CellValue, kind: GridColumn["kind"]): JsonSegment[] 
   return parsed === undefined ? null : previewSegments(parsed);
 }
 
-function valueCell(value: string, kind: GridColumn["kind"], isModified: boolean): GridCell {
-  const json = jsonPreview(value, kind);
+const PLACEHOLDER = {
+  isNull: false,
+  isModified: false,
+  isDefault: false,
+  json: null,
+  boolean: null,
+  rich: null,
+} as const;
+
+function nullCell(isModified: boolean): GridCell {
+  return { ...PLACEHOLDER, text: "NULL", raw: null, isNull: true, isModified };
+}
+
+function defaultCell(isModified: boolean): GridCell {
+  return { ...PLACEHOLDER, text: "DEFAULT", raw: undefined, isDefault: true, isModified };
+}
+
+function valueCell(value: string, column: GridColumn, isModified: boolean, options: RichOptions): GridCell {
+  const json = jsonPreview(value, column.kind);
   return {
-    text: json ? gridText(segmentsText(json), kind) : gridText(value, kind),
+    text: json ? gridText(segmentsText(json), column.kind) : gridText(value, column.kind),
     raw: value,
     isNull: false,
     isModified,
     isDefault: false,
     json,
-    boolean: kind === "boolean" ? booleanValue(value) : null,
+    boolean: column.kind === "boolean" ? booleanValue(value) : null,
+    rich: json ? null : richValue(value, column, options),
   };
 }
 
-function plainCell(value: CellValue, kind: GridColumn["kind"]): GridCell {
-  if (value === null) {
-    return {
-      text: "NULL",
-      raw: null,
-      isNull: true,
-      isModified: false,
-      isDefault: false,
-      json: null,
-      boolean: null,
-    };
-  }
-  return valueCell(value, kind, false);
+function plainCell(value: CellValue, column: GridColumn, options: RichOptions): GridCell {
+  return value === null ? nullCell(false) : valueCell(value, column, false, options);
 }
 
-function editedCell(edit: EditValue, kind: GridColumn["kind"]): GridCell {
+function editedCell(edit: EditValue, column: GridColumn, options: RichOptions): GridCell {
   switch (edit.kind) {
     case "text":
-      return valueCell(edit.value, kind, true);
+      return valueCell(edit.value, column, true, options);
     case "null":
-      return {
-        text: "NULL",
-        raw: null,
-        isNull: true,
-        isModified: true,
-        isDefault: false,
-        json: null,
-        boolean: null,
-      };
+      return nullCell(true);
     case "default":
-      return {
-        text: "DEFAULT",
-        raw: undefined,
-        isNull: false,
-        isModified: true,
-        isDefault: true,
-        json: null,
-        boolean: null,
-      };
+      return defaultCell(true);
   }
 }
 
 /** Rows for a read-only result. */
-export function readOnlyRows(result: QueryResult): GridRow[] {
+export function readOnlyRows(
+  result: QueryResult,
+  columns: readonly GridColumn[],
+  options: RichOptions = PLAIN_OPTIONS,
+): GridRow[] {
   return result.rows.map((row) => ({
-    cells: result.columns.map((column, index) => plainCell(row[index] ?? null, column.kind)),
+    cells: columns.map((column, index) => plainCell(row[index] ?? null, column, options)),
     state: "normal",
   }));
 }
 
 /** Rows for an editable table page: existing rows with staged edits, then pending inserts. */
-export function editableRows(result: QueryResult, structure: TableStructure, changes: ChangeSet): GridRow[] {
+export function editableRows(
+  result: QueryResult,
+  structure: TableStructure,
+  changes: ChangeSet,
+  columns: readonly GridColumn[],
+  options: RichOptions = PLAIN_OPTIONS,
+): GridRow[] {
   const names = result.columns.map((c) => c.name);
   const rows: GridRow[] = result.rows.map((row) => {
     const identity = rowIdentity(structure, row, names);
     const deleted = identity !== null && identity.key in changes.deletes;
     const staged = identity ? changes.updates[identity.key]?.columns : undefined;
-    const cells = result.columns.map((column, index) => {
+    const cells = columns.map((column, index) => {
       const edit = staged?.[column.name];
-      return edit ? editedCell(edit, column.kind) : plainCell(row[index] ?? null, column.kind);
+      return edit ? editedCell(edit, column, options) : plainCell(row[index] ?? null, column, options);
     });
     return { cells, state: deleted ? "deleted" : staged ? "modified" : "normal" };
   });
   for (const insert of changes.inserts) {
-    const cells = result.columns.map((column) => {
+    const cells = columns.map((column) => {
       const edit = insert.values[column.name];
-      if (edit) return editedCell(edit, column.kind);
+      if (edit) return editedCell(edit, column, options);
       const info = structure.columns.find((c) => c.name === column.name);
-      if (info && (info.defaultValue !== null || info.isIdentity || info.isGenerated)) {
-        return {
-          text: "DEFAULT",
-          raw: undefined,
-          isNull: false,
-          isModified: false,
-          isDefault: true,
-          json: null,
-          boolean: null,
-        };
-      }
-      return {
-        text: "NULL",
-        raw: null,
-        isNull: true,
-        isModified: false,
-        isDefault: false,
-        json: null,
-        boolean: null,
-      };
+      const hasDefault = info && (info.defaultValue !== null || info.isIdentity || info.isGenerated);
+      return hasDefault ? defaultCell(false) : nullCell(false);
     });
     rows.push({ cells, state: "inserted" });
   }
@@ -145,12 +130,13 @@ export function buildGridContent(
   structure: TableStructure | null,
   changes: ChangeSet | null,
   version: number,
+  options: RichOptions = PLAIN_OPTIONS,
 ): GridContent {
   if (!result) return { columns: [], rows: [], version };
   const columns = gridColumns(result, structure);
   const rows =
     structure && changes && isTableEditable(structure)
-      ? editableRows(result, structure, changes)
-      : readOnlyRows(result);
+      ? editableRows(result, structure, changes, columns, options)
+      : readOnlyRows(result, columns, options);
   return { columns, rows, version };
 }

@@ -2,6 +2,7 @@
 
 import {
   addInsert,
+  changeCount,
   changeStatements,
   editFromCell,
   emptyChangeSet,
@@ -18,18 +19,48 @@ import {
 } from "@/core/changes/changeSet";
 import { exportRows, type ExportFormat } from "@/core/exchange/export";
 import {
+  columnSampleSql,
   countSql,
+  lookupSql,
   newFilter,
+  newTableQuery,
   pageSql,
   toggleSort,
   type Filter,
   type TableQuery,
 } from "@/core/query/tableQuery";
-import { toAppError, type CellValue, type ColumnInfo, type TableRef } from "@/lib/types";
+import type { TableLayout } from "@/features/grid/columnLayout";
+import { EMPTY_SELECTION, type ValueFilter } from "@/features/grid/types";
+import {
+  toAppError,
+  type CellValue,
+  type ColumnInfo,
+  type ForeignKeyInfo,
+  type QueryResult,
+  type TableRef,
+  type TableStructure,
+} from "@/lib/types";
 
-import { findTab, getState, mutateTab, type TableTab } from "../store";
+import { useSettings } from "../settings";
+import { findTab, getState, mutateTab, type TableTab, type TableViewMode } from "../store";
 import { executeOn, executeTransactionOn, loadStructure } from "./connections";
-import { persistWorkspace } from "./workspace";
+import { rememberLayout, storedLayout } from "./layouts";
+import { insertTableTab, persistWorkspace } from "./workspace";
+
+/** Visited queries kept for going back. */
+export const HISTORY_LIMIT = 50;
+/** Values sampled to profile a column. */
+export const PROFILE_SAMPLE = 20_000;
+
+/** Whether the connection of a tab was opened read-only. */
+export function isReadOnlyConnection(connectionId: string): boolean {
+  return getState().connections[connectionId]?.profile.readOnly ?? false;
+}
+
+/** Whether rows of the tab can be edited: a table with a primary key on a writable connection. */
+export function isTabEditable(tab: TableTab): boolean {
+  return tab.structure !== null && isTableEditable(tab.structure) && !isReadOnlyConnection(tab.connectionId);
+}
 
 export type RowSource = { kind: "existing"; index: number } | { kind: "inserted"; id: string };
 
@@ -209,7 +240,7 @@ export function normaliseEdit(value: EditValue, info: ColumnInfo | undefined): E
 
 export function setCell(tabId: string, row: number, column: number, edit: EditValue): void {
   const tab = findTab(tabId, "table");
-  if (!tab?.result || !tab.structure || !isTableEditable(tab.structure)) return;
+  if (!tab?.result || !tab.structure || !isTabEditable(tab)) return;
   const name = tab.result.columns[column]?.name;
   if (name === undefined) return;
   const source = rowSource(tab, row);
@@ -233,7 +264,7 @@ export function setCell(tabId: string, row: number, column: number, edit: EditVa
 
 export function toggleDeleteRows(tabId: string, rows: number[]): void {
   const tab = findTab(tabId, "table");
-  if (!tab?.structure || !isTableEditable(tab.structure)) return;
+  if (!tab?.structure || !isTabEditable(tab)) return;
   mutateTab(tabId, "table", (t) => {
     for (const row of [...rows].sort((a, b) => b - a)) {
       const source = rowSource(t, row);
@@ -252,7 +283,7 @@ export function toggleDeleteRows(tabId: string, rows: number[]): void {
 /** Appends an empty row and focuses its first editable, non-key column. */
 export function addRow(tabId: string): void {
   const tab = findTab(tabId, "table");
-  if (!tab?.result || !tab.structure || !isTableEditable(tab.structure)) return;
+  if (!tab?.result || !tab.structure || !isTabEditable(tab)) return;
   mutateTab(tabId, "table", (t) => {
     const [changes] = addInsert(t.changes);
     t.changes = changes;
@@ -267,7 +298,7 @@ export function addRow(tabId: string): void {
       }) ?? 0,
     );
     t.focusRequest = { row, column };
-    t.selection = { rows: [row], focused: { row, column } };
+    t.selection = { rows: [row], focused: { row, column }, range: null };
   });
 }
 
@@ -280,7 +311,7 @@ export function clearFocusRequest(tabId: string): void {
 /** Copies rows as pending inserts, leaving identity and generated columns to the server. */
 export function duplicateRows(tabId: string, rows: number[]): void {
   const tab = findTab(tabId, "table");
-  if (!tab?.result || !tab.structure || !isTableEditable(tab.structure)) return;
+  if (!tab?.result || !tab.structure || !isTabEditable(tab)) return;
   const structure = tab.structure;
   const columns = tab.result.columns;
   mutateTab(tabId, "table", (t) => {
@@ -344,22 +375,220 @@ export async function commitChanges(tabId: string): Promise<boolean> {
   }
 }
 
-/** The table and filter to open when following the foreign key of a cell. */
+/** Values of a row by column name, with staged edits applied (DEFAULT reads as `undefined`). */
+export function rowRecord(tab: TableTab, row: number): Record<string, CellValue | undefined> {
+  const record: Record<string, CellValue | undefined> = {};
+  tab.result?.columns.forEach((column, index) => {
+    record[column.name] = cellValue(tab, row, index);
+  });
+  return record;
+}
+
+/** The foreign key a column belongs to; single-column keys win over composite ones. */
+export function foreignKeyOf(structure: TableStructure, column: string): ForeignKeyInfo | undefined {
+  const keys = structure.foreignKeys.filter((fk) => fk.columns.includes(column));
+  return keys.find((fk) => fk.columns.length === 1) ?? keys[0];
+}
+
+/** Values of a key's columns in a record; `null` when one of them is NULL or unknown. */
+export function keyValues(
+  record: Record<string, CellValue | undefined>,
+  columns: readonly string[],
+): string[] | null {
+  const values = columns.map((column) => record[column]);
+  return values.every((v): v is string => typeof v === "string") ? values : null;
+}
+
+/** The table and filters to open when following the foreign key of a cell. */
 export function foreignKeyTarget(
   tab: TableTab,
   row: number,
   column: number,
-): { table: TableRef; filter: Filter } | null {
+): { table: TableRef; filters: Filter[]; key: ForeignKeyInfo; values: string[] } | null {
   const name = tab.result?.columns[column]?.name;
   if (!tab.structure || name === undefined) return null;
-  const key = tab.structure.foreignKeys.find((fk) => fk.columns.length === 1 && fk.columns[0] === name);
-  const referenced = key?.referencedColumns[0];
-  const value = cellValue(tab, row, column);
-  if (!key || referenced === undefined || value === null || value === undefined) return null;
+  const key = foreignKeyOf(tab.structure, name);
+  if (!key) return null;
+  const values = keyValues(rowRecord(tab, row), key.columns);
+  if (!values) return null;
   return {
     table: { schema: key.referencedSchema, name: key.referencedTable },
-    filter: newFilter(referenced, "equals", value),
+    filters: key.referencedColumns.map((referenced, i) => newFilter(referenced, "equals", values[i] ?? "")),
+    key,
+    values,
   };
+}
+
+// Navigation
+
+function resetForQuery(tab: TableTab, query: TableQuery, history: TableTab["history"]): void {
+  const sameTable =
+    tab.query.table.schema === query.table.schema && tab.query.table.name === query.table.name;
+  tab.query = query;
+  tab.history = history;
+  tab.result = null;
+  tab.totalCount = null;
+  tab.error = null;
+  tab.changes = emptyChangeSet();
+  tab.selection = EMPTY_SELECTION;
+  tab.focusRequest = null;
+  tab.filterBarVisible = query.filters.length > 0 || query.rawWhere.trim() !== "";
+  if (!sameTable) {
+    tab.structure = null;
+    tab.layout = storedLayout(tab.connectionId, query.table);
+  }
+  tab.version += 1;
+}
+
+/**
+ * Shows another query in the same tab, remembering the current one for going back. A tab with
+ * staged edits keeps them: the query opens in a new tab instead.
+ */
+export async function navigateTable(tabId: string, query: TableQuery): Promise<void> {
+  const tab = findTab(tabId, "table");
+  if (!tab) return;
+  if (changeCount(tab.changes) > 0) {
+    await loadTable(insertTableTab(tab.connectionId, query));
+    return;
+  }
+  mutateTab(tabId, "table", (t) => {
+    resetForQuery(t, query, { back: [...t.history.back, t.query].slice(-HISTORY_LIMIT), forward: [] });
+  });
+  persistWorkspace();
+  await loadTable(tabId);
+}
+
+export async function goBack(tabId: string): Promise<boolean> {
+  const tab = findTab(tabId, "table");
+  const previous = tab?.history.back.at(-1);
+  if (!tab || !previous || changeCount(tab.changes) > 0) return false;
+  mutateTab(tabId, "table", (t) => {
+    resetForQuery(t, previous, {
+      back: t.history.back.slice(0, -1),
+      forward: [t.query, ...t.history.forward],
+    });
+  });
+  persistWorkspace();
+  await loadTable(tabId);
+  return true;
+}
+
+export async function goForward(tabId: string): Promise<boolean> {
+  const tab = findTab(tabId, "table");
+  const next = tab?.history.forward[0];
+  if (!tab || !next || changeCount(tab.changes) > 0) return false;
+  mutateTab(tabId, "table", (t) => {
+    resetForQuery(t, next, { back: [...t.history.back, t.query], forward: t.history.forward.slice(1) });
+  });
+  persistWorkspace();
+  await loadTable(tabId);
+  return true;
+}
+
+/** Follows the foreign key of a cell, in this tab (with history) or a new one. */
+export async function followForeignKey(
+  tabId: string,
+  row: number,
+  column: number,
+  newTab: boolean,
+): Promise<void> {
+  const tab = findTab(tabId, "table");
+  const target = tab ? foreignKeyTarget(tab, row, column) : null;
+  if (!tab || !target) return;
+  await openRelated(tabId, target.table, target.filters, newTab);
+}
+
+/** Opens a table filtered on key values, in this tab (with history) or a new one. */
+export async function openRelated(
+  tabId: string,
+  table: TableRef,
+  filters: Filter[],
+  newTab: boolean,
+): Promise<void> {
+  const tab = findTab(tabId, "table");
+  if (!tab) return;
+  const query = newTableQuery(table, useSettings.getState().settings.pageSize, filters);
+  if (newTab) await loadTable(insertTableTab(tab.connectionId, query));
+  else await navigateTable(tabId, query);
+}
+
+export function setViewMode(tabId: string, mode: TableViewMode): void {
+  mutateTab(tabId, "table", (t) => {
+    t.viewMode = mode;
+  });
+}
+
+// Layout
+
+/** Updates the column layout of a tab and remembers it for the table. */
+export function updateLayout(tabId: string, recipe: (layout: TableLayout) => TableLayout): void {
+  const tab = findTab(tabId, "table");
+  if (!tab) return;
+  const layout = recipe(tab.layout);
+  mutateTab(tabId, "table", (t) => {
+    t.layout = layout;
+  });
+  rememberLayout(tab.connectionId, tab.query.table, layout);
+}
+
+// Search and quick filters
+
+export async function setSearch(tabId: string, search: string): Promise<void> {
+  const tab = findTab(tabId, "table");
+  if (!tab || tab.query.search === search) return;
+  updateQuery(tabId, (q) => {
+    q.search = search;
+    q.page = 0;
+  });
+  await loadTable(tabId);
+}
+
+/** Adds an enabled filter and reloads. */
+export async function addFilterAndApply(tabId: string, filter: Filter): Promise<void> {
+  updateQuery(tabId, (q) => {
+    q.filters.push(filter);
+    q.page = 0;
+  });
+  mutateTab(tabId, "table", (t) => {
+    t.filterBarVisible = true;
+  });
+  await loadTable(tabId);
+}
+
+/** Filters the rows on the value of a cell. */
+export async function filterByValue(
+  tabId: string,
+  row: number,
+  column: number,
+  op: ValueFilter,
+): Promise<void> {
+  const tab = findTab(tabId, "table");
+  const name = tab?.result?.columns[column]?.name;
+  if (!tab || name === undefined) return;
+  const value = cellValue(tab, row, column);
+  if (value === undefined) return;
+  await addFilterAndApply(tabId, newFilter(name, op, value ?? ""));
+}
+
+// Lookups
+
+/** Values of one column under the current filters, to profile it. */
+export async function loadColumnSample(tabId: string, column: string): Promise<CellValue[]> {
+  const tab = findTab(tabId, "table");
+  if (!tab) return [];
+  const result = await executeOn(tab.connectionId, columnSampleSql(tab.query, column, PROFILE_SAMPLE));
+  return result.rows.map((row) => row[0] ?? null);
+}
+
+/** The first row of a table matching key values, or `null`. */
+export async function lookupRow(
+  connectionId: string,
+  table: TableRef,
+  columns: readonly string[],
+  values: readonly string[],
+): Promise<QueryResult | null> {
+  const result = await executeOn(connectionId, lookupSql(table, columns, values, 1), 1);
+  return result.rows.length > 0 ? result : null;
 }
 
 export function exportTable(tab: TableTab, format: ExportFormat, selectionOnly: boolean): string {

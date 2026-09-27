@@ -9,6 +9,9 @@ import { getState, mutate, mutateConnection, pushToast, type ConnectionState } f
 import { loadPassword, markConnected } from "./profiles";
 import { persistWorkspace } from "./workspace";
 
+/** Makes a session refuse writes on the server side. */
+export const READ_ONLY_SQL = "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY";
+
 /** How often open connections are pinged. */
 export const HEALTH_CHECK_INTERVAL_MS = 30_000;
 
@@ -45,6 +48,7 @@ export function connectionParams(profile: ConnectionProfile, password: string | 
 async function openSession(profile: ConnectionProfile): Promise<void> {
   const password = await loadPassword(profile.id);
   const sessionId = await backend().connect(connectionParams(profile, password));
+  if (profile.readOnly) await backend().executeSql(sessionId, READ_ONLY_SQL, null);
   let serverVersion = "";
   try {
     serverVersion = await backend().serverVersion(sessionId);

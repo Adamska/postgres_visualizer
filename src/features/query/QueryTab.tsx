@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ErrorBanner } from "@/components/Primitives";
+import { registerEditor } from "@/features/editor/registry";
 import { SqlEditor } from "@/features/editor/SqlEditor";
 import type { RunScope, SqlEditorHandle } from "@/features/editor/types";
 import { useTheme } from "@/hooks/useTheme";
@@ -20,6 +21,11 @@ export function QueryTab({ tabId }: { tabId: string }) {
   const editor = useRef<SqlEditorHandle>(null);
   const [split, setSplit] = useState(0.45);
   const container = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handle = editor.current;
+    return handle ? registerEditor(tabId, handle) : undefined;
+  }, [tabId]);
 
   const onRun = useCallback((scope: RunScope) => void runQuery(tabId, scope), [tabId]);
   const completionProvider = useCallback(

@@ -3,10 +3,17 @@
 import {
   ArrowUpRight,
   Ban,
+  BarChart3,
   Braces,
   Copy,
+  Equal,
+  EqualNot,
+  ExternalLink,
   Eye,
   EyeOff,
+  Filter,
+  Pin,
+  PinOff,
   PencilLine,
   RotateCcw,
   Rows3,
@@ -27,12 +34,20 @@ import {
   selectionTsv,
   type VisibleColumn,
 } from "./gridModel";
-import type { GridActions, GridCellPosition, GridColumn, GridContent, GridRow } from "./types";
+import type { Bounds, GridActions, GridCellPosition, GridColumn, GridContent, GridRow } from "./types";
 
 /** What was right-clicked. */
 export type MenuTarget =
   | { kind: "cell"; position: GridCellPosition; column: GridColumn; row: GridRow }
-  | { kind: "header"; column: GridColumn };
+  | { kind: "header"; column: GridColumn; gridColumn: number; bounds: Bounds };
+
+const ORDERED_KINDS = new Set(["integer", "decimal", "date", "time", "timestamp", "interval", "text"]);
+
+/** Short form of a value for menu labels. */
+export function menuValue(value: string): string {
+  const line = value.replace(/\s+/g, " ");
+  return line.length > 24 ? `${line.slice(0, 24)}…` : line;
+}
 
 /** Everything the menu needs to build its items. */
 export interface MenuContext {
@@ -40,6 +55,7 @@ export interface MenuContext {
   content: GridContent;
   visible: readonly VisibleColumn[];
   hiddenColumnIds: ReadonlySet<number> | undefined;
+  frozenColumns: number;
   /** Rows selected through the row markers. */
   selectedRows: readonly number[];
   readOnly: boolean;
@@ -110,13 +126,69 @@ export function buildCellMenuItems(
           onSelect: () => actions?.onOpenEditor?.(position),
         },
   ];
-  if (column.isForeignKey) {
+  const cell = row.cells[position.column];
+  if (actions?.onFilterValue && cell && !cell.isDefault && row.state !== "inserted") {
+    const filter = actions.onFilterValue;
+    if (cell.raw === null) {
+      items.push({
+        id: "filter-null",
+        label: `Filter ${column.name} is NULL`,
+        icon: <Filter className="size-3.5" />,
+        separatorBefore: true,
+        onSelect: () => filter(position, "isNull"),
+      });
+      items.push({
+        id: "filter-not-null",
+        label: `Filter ${column.name} is not NULL`,
+        icon: <Filter className="size-3.5" />,
+        onSelect: () => filter(position, "isNotNull"),
+      });
+    } else if (cell.raw !== undefined && column.kind !== "json" && column.kind !== "binary") {
+      const shown = menuValue(cell.raw);
+      items.push({
+        id: "filter-equals",
+        label: `Filter ${column.name} = ${shown}`,
+        icon: <Equal className="size-3.5" />,
+        separatorBefore: true,
+        onSelect: () => filter(position, "equals"),
+      });
+      items.push({
+        id: "filter-not-equals",
+        label: `Filter ${column.name} ≠ ${shown}`,
+        icon: <EqualNot className="size-3.5" />,
+        onSelect: () => filter(position, "notEquals"),
+      });
+      if (ORDERED_KINDS.has(column.kind)) {
+        items.push({
+          id: "filter-greater",
+          label: `Filter ${column.name} > ${shown}`,
+          icon: <Filter className="size-3.5" />,
+          onSelect: () => filter(position, "greaterThan"),
+        });
+        items.push({
+          id: "filter-less",
+          label: `Filter ${column.name} < ${shown}`,
+          icon: <Filter className="size-3.5" />,
+          onSelect: () => filter(position, "lessThan"),
+        });
+      }
+    }
+  }
+  if (column.isForeignKey && actions?.onFollowForeignKey && cell?.raw !== null) {
+    const follow = actions.onFollowForeignKey;
     items.push({
       id: "follow-fk",
       label: "Follow foreign key",
       icon: <ArrowUpRight className="size-3.5" />,
+      shortcut: "⌘-click",
       separatorBefore: true,
-      onSelect: () => actions?.onFollowForeignKey?.(position),
+      onSelect: () => follow(position, false),
+    });
+    items.push({
+      id: "follow-fk-tab",
+      label: "Open referenced row in new tab",
+      icon: <ExternalLink className="size-3.5" />,
+      onSelect: () => follow(position, true),
     });
   }
   if (!readOnly) {
@@ -132,20 +204,47 @@ export function buildCellMenuItems(
   return items;
 }
 
-/** Items for a right-clicked header: hide this column, show any hidden one. */
+/** Items for a right-clicked header: profile, freeze, hide this column, show any hidden one. */
 export function buildHeaderMenuItems(
   context: MenuContext,
   target: Extract<MenuTarget, { kind: "header" }>,
 ): MenuItem[] {
-  const { content, hiddenColumnIds, actions } = context;
-  const items: MenuItem[] = [
-    {
-      id: "hide",
-      label: `Hide ${target.column.name}`,
-      icon: <EyeOff className="size-3.5" />,
-      onSelect: () => actions?.onToggleColumnVisibility?.(target.column.id),
-    },
-  ];
+  const { content, hiddenColumnIds, frozenColumns, actions } = context;
+  const items: MenuItem[] = [];
+  if (actions?.onColumnProfile) {
+    const profile = actions.onColumnProfile;
+    items.push({
+      id: "profile",
+      label: "Profile column…",
+      icon: <BarChart3 className="size-3.5" />,
+      onSelect: () => profile(target.column, target.bounds),
+    });
+  }
+  if (actions?.onFreezeColumns) {
+    const freeze = actions.onFreezeColumns;
+    items.push({
+      id: "freeze",
+      label: `Freeze columns up to ${target.column.name}`,
+      icon: <Pin className="size-3.5" />,
+      separatorBefore: items.length > 0,
+      onSelect: () => freeze(target.gridColumn + 1),
+    });
+    if (frozenColumns > 0) {
+      items.push({
+        id: "unfreeze",
+        label: "Unfreeze columns",
+        icon: <PinOff className="size-3.5" />,
+        onSelect: () => freeze(0),
+      });
+    }
+  }
+  items.push({
+    id: "hide",
+    label: `Hide ${target.column.name}`,
+    icon: <EyeOff className="size-3.5" />,
+    separatorBefore: items.length > 0,
+    onSelect: () => actions?.onToggleColumnVisibility?.(target.column.id),
+  });
   hiddenColumns(content.columns, hiddenColumnIds).forEach((column, index) => {
     items.push({
       id: `show-${column.id}`,

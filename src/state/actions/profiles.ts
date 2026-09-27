@@ -1,5 +1,6 @@
 // Saved connection profiles and their passwords.
 
+import { normalizeProfile } from "@/core/connection/url";
 import { backend } from "@/lib/backend";
 import { toAppError, type ConnectionProfile, type PasswordStorage } from "@/lib/types";
 
@@ -20,7 +21,8 @@ function passwordStorage(): PasswordStorage {
 
 export async function loadProfiles(): Promise<void> {
   try {
-    const profiles = (await backend().loadDocument<ConnectionProfile[]>(DOCUMENT)) ?? [];
+    const stored = (await backend().loadDocument<Parameters<typeof normalizeProfile>[0][]>(DOCUMENT)) ?? [];
+    const profiles = stored.map(normalizeProfile);
     mutate((draft) => {
       draft.profiles = profiles;
     });

@@ -4,7 +4,14 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 
 import type { ChangeSet } from "@/core/changes/changeSet";
+import type { ChartSpec } from "@/core/chart/chart";
+import type { Point } from "@/core/diagram/layout";
+import type { ActivitySnapshot, IndexUsage, TableHealth } from "@/core/monitor/monitor";
+import type { SavedView } from "@/core/query/savedView";
 import type { TableQuery } from "@/core/query/tableQuery";
+import type { StatementWarning } from "@/core/sql/safety";
+import type { Statement } from "@/core/sql/splitter";
+import type { TableLayout } from "@/features/grid/columnLayout";
 import type { GridSelection } from "@/features/grid/types";
 import type { EditorErrorMarker } from "@/features/editor/types";
 import type {
@@ -13,6 +20,7 @@ import type {
   FunctionInfo,
   QueryResult,
   RelationInfo,
+  SchemaGraph,
   SchemaInfo,
   TableRef,
   TableStructure,
@@ -44,9 +52,15 @@ interface TabBase {
   connectionId: string;
 }
 
+/** Grid of rows, or one record at a time with its related records. */
+export type TableViewMode = "grid" | "form";
+
 export interface TableTab extends TabBase {
   kind: "table";
   query: TableQuery;
+  /** Queries visited before (following foreign keys) and after (after going back). */
+  history: { back: TableQuery[]; forward: TableQuery[] };
+  viewMode: TableViewMode;
   structure: TableStructure | null;
   result: QueryResult | null;
   totalCount: number | null;
@@ -54,7 +68,7 @@ export interface TableTab extends TabBase {
   committing: boolean;
   error: AppError | null;
   changes: ChangeSet;
-  hiddenColumnIds: number[];
+  layout: TableLayout;
   selection: GridSelection;
   filterBarVisible: boolean;
   /** Bumped whenever rows or staged changes change, so the grid knows to redraw. */
@@ -77,8 +91,27 @@ export interface QueryTab extends TabBase {
   /** Dedicated session so manual transactions stay isolated per tab. */
   sessionId: string | null;
   hiddenColumnIds: number[];
+  frozenColumns: number;
   gridSelection: GridSelection;
   version: number;
+  /** How the selected result is shown. */
+  resultView: ResultView;
+  /** Chart settings; `null` until the chart is first opened for a result. */
+  chart: ChartSpec | null;
+  /** Results kept aside to compare later ones against. */
+  pinned: PinnedResult[];
+  /** When set, the grid shows the difference between a pinned result and the current one. */
+  compare: { pinnedId: string; keyColumns: string[] } | null;
+}
+
+export type ResultView = "grid" | "chart" | "plan";
+
+export interface PinnedResult {
+  id: string;
+  label: string;
+  sql: string;
+  result: QueryResult;
+  pinnedAt: string;
 }
 
 export interface StructureTab extends TabBase {
@@ -89,7 +122,34 @@ export interface StructureTab extends TabBase {
   loading: boolean;
 }
 
-export type Tab = TableTab | QueryTab | StructureTab;
+export interface DiagramTab extends TabBase {
+  kind: "diagram";
+  schema: string;
+  graph: SchemaGraph | null;
+  loading: boolean;
+  error: AppError | null;
+  /** Positions the user dragged tables to, by table name. */
+  positions: Record<string, Point>;
+}
+
+export type ServerPane = "activity" | "tables" | "indexes";
+
+export interface ServerTab extends TabBase {
+  kind: "server";
+  pane: ServerPane;
+  activity: ActivitySnapshot | null;
+  tables: { tables: TableHealth[]; statsReset: string | null } | null;
+  indexes: IndexUsage[] | null;
+  loading: boolean;
+  error: AppError | null;
+  /** Pauses the automatic refresh of the activity pane. */
+  paused: boolean;
+  showIdle: boolean;
+  showBackground: boolean;
+  refreshedAt: number | null;
+}
+
+export type Tab = TableTab | QueryTab | StructureTab | DiagramTab | ServerTab;
 
 export interface Toast {
   id: string;
@@ -109,6 +169,7 @@ export interface AppState {
   inspectorOpen: boolean;
   sidebarOpen: boolean;
   toasts: Toast[];
+  savedViews: SavedView[];
   /** Which dialog is open, if any. */
   dialog:
     | { kind: "connection"; profileId: string | null }
@@ -118,6 +179,9 @@ export interface AppState {
     | { kind: "runSqlFile"; connectionId: string }
     | { kind: "commit"; tabId: string }
     | { kind: "valueEditor"; tabId: string; row: number; column: number }
+    | { kind: "palette" }
+    | { kind: "confirmRun"; tabId: string; statements: Statement[]; warnings: StatementWarning[] }
+    | { kind: "saveView"; tabId: string; viewId: string | null }
     | null;
 }
 
@@ -132,6 +196,7 @@ export const initialState: AppState = {
   inspectorOpen: false,
   sidebarOpen: true,
   toasts: [],
+  savedViews: [],
   dialog: null,
 };
 

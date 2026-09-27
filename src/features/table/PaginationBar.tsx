@@ -4,12 +4,14 @@ import { IconButton, Spinner } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Controls";
 import { formatCount, formatDuration } from "@/core/format/values";
 import { PAGE_SIZES } from "@/core/query/tableQuery";
+import { SelectionStats } from "@/features/grid/SelectionStats";
+import type { GridContent } from "@/features/grid/types";
 import { goToPage, setPageSize } from "@/state/actions/tableTab";
 import type { TableTab } from "@/state/store";
 
 const SIZE_OPTIONS = PAGE_SIZES.map((size) => ({ value: String(size), label: `${size} rows` }));
 
-export function PaginationBar({ tab }: { tab: TableTab }) {
+export function PaginationBar({ tab, content }: { tab: TableTab; content: GridContent }) {
   const { query, result, totalCount } = tab;
   const rowCount = result?.rows.length ?? 0;
   const first = query.page * query.pageSize + 1;
@@ -35,8 +37,10 @@ export function PaginationBar({ tab }: { tab: TableTab }) {
         <span className="font-mono text-[11px] text-fg-subtle">{formatDuration(result.durationMs)}</span>
       )}
       {tab.loading && <Spinner className="size-3" />}
-      <div className="flex-1" />
-      {tab.selection.rows.length > 0 && <span>{tab.selection.rows.length} selected</span>}
+      <div className="min-w-0 flex-1">
+        {tab.viewMode === "grid" && <SelectionStats content={content} selection={tab.selection} />}
+      </div>
+      {tab.selection.rows.length > 1 && <span>{tab.selection.rows.length} selected</span>}
       <span className="tabular-nums">{range}</span>
       <div className="flex items-center">
         <IconButton

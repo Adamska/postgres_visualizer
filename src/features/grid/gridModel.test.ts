@@ -12,10 +12,13 @@ import {
   defaultColumnWidth,
   editModeFor,
   headerTitle,
+  matchingCells,
+  movedOrder,
   movePosition,
   rowHeightFor,
   rowsTsv,
   sameSelection,
+  selectedCells,
   selectionTsv,
   toGridSelection,
   visibleColumns,
@@ -52,6 +55,7 @@ const content: GridContent = {
           isDefault: false,
           json: null,
           boolean: null,
+          rich: null,
         },
         {
           text: "Ann",
@@ -61,6 +65,7 @@ const content: GridContent = {
           isDefault: false,
           json: null,
           boolean: null,
+          rich: null,
         },
         {
           text: "NULL",
@@ -70,6 +75,7 @@ const content: GridContent = {
           isDefault: false,
           json: null,
           boolean: null,
+          rich: null,
         },
       ],
       state: "normal",
@@ -84,6 +90,7 @@ const content: GridContent = {
           isDefault: false,
           json: null,
           boolean: null,
+          rich: null,
         },
         {
           text: "Bob",
@@ -93,6 +100,7 @@ const content: GridContent = {
           isDefault: false,
           json: null,
           boolean: null,
+          rich: null,
         },
         {
           text: "{}",
@@ -102,6 +110,7 @@ const content: GridContent = {
           isDefault: false,
           json: null,
           boolean: null,
+          rich: null,
         },
       ],
       state: "deleted",
@@ -145,6 +154,17 @@ describe("grid model", () => {
     expect(editModeFor(column(3, "mood", { enumValues: ["a"] }), content.rows[0], false)).toBe("large");
   });
 
+  it("orders, moves and searches columns", () => {
+    const ordered = visibleColumns(content.columns, new Set([1]), [2, 0]);
+    expect(ordered.map((v) => v.column.name)).toEqual(["meta", "id"]);
+    const all = visibleColumns(content.columns);
+    expect(movedOrder(content.columns, all, null, 0, 2)).toEqual([1, 2, 0]);
+    expect(movedOrder(content.columns, all, null, 2, 0)).toEqual([2, 0, 1]);
+    expect(movedOrder(content.columns, ordered, [2, 0, 1], 1, 0)).toEqual([0, 2, 1]);
+    expect(matchingCells(content, all, "BO")).toEqual([{ x: 1, y: 1, width: 1, height: 1 }]);
+    expect(matchingCells(content, all, " ")).toEqual([]);
+  });
+
   it("builds TSV for selections and rows", () => {
     const visible = visibleColumns(content.columns);
     expect(selectionTsv(content, visible, { x: 0, y: 0, width: 3, height: 2 })).toBe("1\tAnn\t\n2\tBob\t{}");
@@ -156,12 +176,27 @@ describe("grid model", () => {
 
   it("maps selections and positions", () => {
     const visible = visibleColumns(content.columns, new Set([0]));
-    expect(toGridSelection([1, 1], [], visible)).toEqual({ rows: [1], focused: { row: 1, column: 2 } });
-    expect(toGridSelection(undefined, [0, 1], visible)).toEqual({ rows: [0, 1], focused: null });
-    expect(sameSelection({ rows: [1], focused: null }, { rows: [1], focused: null })).toBe(true);
-    expect(sameSelection({ rows: [1], focused: { row: 0, column: 0 } }, { rows: [1], focused: null })).toBe(
-      false,
-    );
+    expect(toGridSelection([1, 1], [], visible)).toEqual({
+      rows: [1],
+      focused: { row: 1, column: 2 },
+      range: null,
+    });
+    expect(toGridSelection([0, 0], [], visible, { x: 0, y: 0, width: 2, height: 2 }).range).toEqual({
+      rowStart: 0,
+      rowEnd: 2,
+      columns: [1, 2],
+    });
+    expect(toGridSelection(undefined, [0, 1], visible)).toEqual({ rows: [0, 1], focused: null, range: null });
+    const none = { rows: [1], focused: null, range: null };
+    expect(sameSelection(none, { ...none })).toBe(true);
+    expect(sameSelection({ ...none, focused: { row: 0, column: 0 } }, none)).toBe(false);
+    expect(sameSelection({ ...none, range: { rowStart: 0, rowEnd: 1, columns: [0] } }, none)).toBe(false);
+    expect(selectedCells({ ...none, range: { rowStart: 0, rowEnd: 2, columns: [2] } }, 3)).toEqual([
+      { row: 0, column: 2 },
+      { row: 1, column: 2 },
+    ]);
+    expect(selectedCells({ rows: [0, 1], focused: null, range: null }, 2)).toHaveLength(4);
+    expect(selectedCells(none, 2)).toEqual([]);
     expect(clampPosition({ col: 5, row: -1 }, 2, 3)).toEqual({ col: 2, row: 0 });
     expect(clampPosition({ col: 0, row: 0 }, 0, 3)).toBeNull();
     expect(movePosition({ col: 0, row: 0 }, -1, 1, 2, 3)).toEqual({ col: 0, row: 1 });
@@ -188,6 +223,7 @@ describe("json cells", () => {
     isDefault: false,
     json: [{ kind: "punct" as const, text: "{ a: 1 }" }],
     boolean: null,
+    rich: null,
   };
   const plainCell = content.rows[1]!.cells[1]!;
 

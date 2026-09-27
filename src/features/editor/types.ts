@@ -38,4 +38,6 @@ export interface SqlEditorHandle {
   /** Replaces the current selection (or inserts at the caret). */
   insertText(text: string): void;
   getSelection(): { anchor: number; head: number };
+  /** Replaces a range of the document (undoable) and selects the new text. */
+  replaceRange(from: number, to: number, text: string): void;
 }

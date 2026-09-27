@@ -1,8 +1,9 @@
-import { ListTree, Plus, Table2, Terminal, X } from "lucide-react";
+import { Activity, ListTree, Lock, Network, Plus, ShieldAlert, Table2, Terminal, X } from "lucide-react";
 
 import { ColorDot } from "@/components/Primitives";
 import { IconButton } from "@/components/ui/Button";
 import { ContextMenu, type MenuItem } from "@/components/ui/Menu";
+import { productionColor } from "@/lib/colors";
 import { cn } from "@/lib/cn";
 import {
   closeOtherTabs,
@@ -16,6 +17,47 @@ import { openDialog, useAppStore, type Tab } from "@/state/store";
 
 import { tabTitle } from "./tabTitle";
 
+/** Badges for the active connection: production and read-only. */
+function EnvironmentBadges() {
+  const profile = useAppStore((s) => {
+    const active = s.tabs.find((t) => t.id === s.activeTabId);
+    const id = active?.connectionId ?? s.activeConnectionId;
+    return id === null ? undefined : s.connections[id]?.profile;
+  });
+  if (!profile) return null;
+  return (
+    <div className="mb-1 flex shrink-0 items-center gap-1.5">
+      {profile.environment === "production" && (
+        <span
+          className="flex h-6 items-center gap-1 rounded-full px-2 text-[10.5px] font-bold tracking-wide text-white uppercase"
+          style={{ background: productionColor(profile.color) }}
+          title="Production connection: writes ask for confirmation"
+        >
+          <ShieldAlert className="size-3.5" /> Production
+        </span>
+      )}
+      {profile.environment === "development" && (
+        <span className="flex h-6 items-center rounded-full bg-success-soft px-2 text-[10.5px] font-semibold tracking-wide text-success uppercase">
+          Dev
+        </span>
+      )}
+      {profile.environment === "staging" && (
+        <span className="flex h-6 items-center rounded-full bg-warning-soft px-2 text-[10.5px] font-semibold tracking-wide text-warning uppercase">
+          Staging
+        </span>
+      )}
+      {profile.readOnly && (
+        <span
+          className="flex h-6 items-center gap-1 rounded-full bg-fg/8 px-2 text-[10.5px] font-semibold tracking-wide text-fg-muted uppercase"
+          title="Read-only connection"
+        >
+          <Lock className="size-3" /> Read-only
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function TabBar() {
   const tabs = useAppStore((s) => s.tabs);
   const activeTabId = useAppStore((s) => s.activeTabId);
@@ -27,6 +69,7 @@ export function TabBar() {
           <TabChip key={tab.id} tab={tab} active={tab.id === activeTabId} />
         ))}
       </div>
+      <EnvironmentBadges />
       <IconButton
         label="New query tab (⌘T)"
         size="sm"
@@ -42,6 +85,9 @@ export function TabBar() {
 
 function TabChip({ tab, active }: { tab: Tab; active: boolean }) {
   const color = useAppStore((s) => s.connections[tab.connectionId]?.profile.color ?? "none");
+  const production = useAppStore(
+    (s) => s.connections[tab.connectionId]?.profile.environment === "production",
+  );
   const dirty = tabHasUnsavedWork(tab);
   const requestClose = () => {
     if (dirty) openDialog({ kind: "commit", tabId: tab.id });
@@ -59,7 +105,9 @@ function TabChip({ tab, active }: { tab: Tab; active: boolean }) {
       onSelect: () => openTable(tab.connectionId, tab.query.table, tab.query.filters, false),
     });
   }
-  const Icon = tab.kind === "table" ? Table2 : tab.kind === "query" ? Terminal : ListTree;
+  const Icon = { table: Table2, query: Terminal, structure: ListTree, diagram: Network, server: Activity }[
+    tab.kind
+  ];
   return (
     <ContextMenu items={items}>
       <div
@@ -75,6 +123,13 @@ function TabChip({ tab, active }: { tab: Tab; active: boolean }) {
             ? "bg-surface text-fg shadow-[0_1px_2px_rgb(0_0_0/0.08),0_0_0_1px_var(--line)]"
             : "text-fg-muted hover:bg-fg/5 hover:text-fg",
         )}
+        style={
+          production
+            ? {
+                boxShadow: `${active ? "0 1px 2px rgb(0 0 0 / 0.08), 0 0 0 1px var(--line), " : ""}inset 0 -2px 0 ${productionColor(color)}`,
+              }
+            : undefined
+        }
       >
         <ColorDot color={color} size={6} />
         <Icon className={cn("size-3.5 shrink-0", active ? "text-accent" : "text-fg-subtle")} />

@@ -115,6 +115,21 @@ pub struct ForeignKeyInfo {
     pub referenced_columns: Vec<String>,
 }
 
+/// A foreign key of another table pointing at this one.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencingKey {
+    pub name: String,
+    /// Schema of the referencing table.
+    pub schema: String,
+    /// The referencing table.
+    pub table: String,
+    /// Columns of the referencing table.
+    pub columns: Vec<String>,
+    /// Columns of this table they point at.
+    pub referenced_columns: Vec<String>,
+}
+
 /// Everything the UI needs to display and edit a relation.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -127,6 +142,49 @@ pub struct TableStructure {
     pub indexes: Vec<IndexInfo>,
     pub constraints: Vec<ConstraintInfo>,
     pub foreign_keys: Vec<ForeignKeyInfo>,
+    /// Foreign keys of other tables that reference this one.
+    pub referenced_by: Vec<ReferencingKey>,
+}
+
+/// A column as drawn in the schema diagram.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphColumn {
+    pub name: String,
+    pub type_name: String,
+    pub is_primary_key: bool,
+    pub is_nullable: bool,
+}
+
+/// A table as drawn in the schema diagram.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphTable {
+    pub name: String,
+    pub kind: RelationKind,
+    pub estimated_rows: Option<i64>,
+    pub columns: Vec<GraphColumn>,
+}
+
+/// A foreign key between tables of the diagram (the referenced table may live elsewhere).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphForeignKey {
+    pub name: String,
+    pub table: String,
+    pub columns: Vec<String>,
+    pub referenced_schema: String,
+    pub referenced_table: String,
+    pub referenced_columns: Vec<String>,
+}
+
+/// Tables of a schema with their columns and foreign keys, for the ER diagram.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaGraph {
+    pub schema: String,
+    pub tables: Vec<GraphTable>,
+    pub foreign_keys: Vec<GraphForeignKey>,
 }
 
 /// Quotes an identifier for SQL.
@@ -169,6 +227,15 @@ impl Rows<'_> {
     fn len(&self) -> usize {
         self.0.rows.len()
     }
+}
+
+/// `string_agg` of the attribute names for an `int2vector` of column numbers of a relation.
+fn column_names_sql(numbers: &str, relation: &str) -> String {
+    format!(
+        "(SELECT string_agg(a.attname, '{SEPARATOR}' ORDER BY k.ord) \
+         FROM unnest({numbers}) WITH ORDINALITY AS k(attnum, ord) \
+         JOIN pg_attribute a ON a.attrelid = {relation} AND a.attnum = k.attnum)"
+    )
 }
 
 /// Lists schemas, `public` first, system schemas last.
@@ -301,6 +368,30 @@ pub async fn structure(session: &Session, schema: &str, name: &str) -> AppResult
     let constraints = execute(session, &constraints_sql, None).await?;
     let constraint_rows = Rows(&constraints);
 
+    let referencing_sql = format!(
+        "SELECT con.conname AS name, n.nspname AS schema, c.relname AS table_name, \
+                {} AS columns, {} AS ref_columns \
+         FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid \
+         JOIN pg_namespace n ON n.oid = c.relnamespace \
+         WHERE con.contype = 'f' AND con.confrelid = {target}::regclass \
+         ORDER BY n.nspname, c.relname, con.conname",
+        column_names_sql("con.conkey", "con.conrelid"),
+        column_names_sql("con.confkey", "con.confrelid"),
+    );
+    let referencing = execute(session, &referencing_sql, None).await?;
+    let referencing_rows = Rows(&referencing);
+    let referenced_by = (0..referencing_rows.len())
+        .filter_map(|row| {
+            Some(ReferencingKey {
+                name: referencing_rows.text(row, "name")?,
+                schema: referencing_rows.text(row, "schema")?,
+                table: referencing_rows.text(row, "table_name")?,
+                columns: referencing_rows.list(row, "columns"),
+                referenced_columns: referencing_rows.list(row, "ref_columns"),
+            })
+        })
+        .collect();
+
     let mut parsed_constraints = Vec::new();
     let mut foreign_keys = Vec::new();
     for row in 0..constraint_rows.len() {
@@ -389,6 +480,88 @@ pub async fn structure(session: &Session, schema: &str, name: &str) -> AppResult
             })
             .collect(),
         constraints: parsed_constraints,
+        foreign_keys,
+        referenced_by,
+    })
+}
+
+/// Loads the tables of a schema with their columns and foreign keys.
+pub async fn schema_graph(session: &Session, schema: &str) -> AppResult<SchemaGraph> {
+    let schema_literal = quote_literal(schema);
+    let tables_sql = format!(
+        "SELECT c.relname AS table_name, c.relkind::text AS kind, c.reltuples::bigint AS estimated_rows, \
+                a.attname AS column_name, format_type(a.atttypid, a.atttypmod) AS type_name, \
+                NOT a.attnotnull AS is_nullable, \
+                EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisprimary \
+                        AND a.attnum = ANY (i.indkey)) AS is_primary_key \
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace \
+         LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped \
+         WHERE n.nspname = {schema_literal} AND c.relkind IN ('r', 'p', 'f') AND NOT c.relispartition \
+         ORDER BY c.relname, a.attnum"
+    );
+    let tables_result = execute(session, &tables_sql, None).await?;
+    let rows = Rows(&tables_result);
+    let mut tables: Vec<GraphTable> = Vec::new();
+    for row in 0..rows.len() {
+        let Some(name) = rows.text(row, "table_name") else {
+            continue;
+        };
+        if tables.last().is_none_or(|table| table.name != name) {
+            let Some(kind) = rows
+                .text(row, "kind")
+                .and_then(|kind| RelationKind::from_relkind(&kind))
+            else {
+                continue;
+            };
+            tables.push(GraphTable {
+                name: name.clone(),
+                kind,
+                estimated_rows: rows
+                    .text(row, "estimated_rows")
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .filter(|value| *value >= 0),
+                columns: Vec::new(),
+            });
+        }
+        if let (Some(table), Some(column)) = (tables.last_mut(), rows.text(row, "column_name")) {
+            table.columns.push(GraphColumn {
+                name: column,
+                type_name: rows.text(row, "type_name").unwrap_or_default(),
+                is_primary_key: rows.boolean(row, "is_primary_key"),
+                is_nullable: rows.boolean(row, "is_nullable"),
+            });
+        }
+    }
+
+    let keys_sql = format!(
+        "SELECT con.conname AS name, c.relname AS table_name, fn.nspname AS ref_schema, \
+                fc.relname AS ref_table, {} AS columns, {} AS ref_columns \
+         FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid \
+         JOIN pg_namespace n ON n.oid = c.relnamespace \
+         JOIN pg_class fc ON fc.oid = con.confrelid JOIN pg_namespace fn ON fn.oid = fc.relnamespace \
+         WHERE con.contype = 'f' AND n.nspname = {schema_literal} AND NOT c.relispartition \
+         ORDER BY c.relname, con.conname",
+        column_names_sql("con.conkey", "con.conrelid"),
+        column_names_sql("con.confkey", "con.confrelid"),
+    );
+    let keys_result = execute(session, &keys_sql, None).await?;
+    let key_rows = Rows(&keys_result);
+    let foreign_keys = (0..key_rows.len())
+        .filter_map(|row| {
+            Some(GraphForeignKey {
+                name: key_rows.text(row, "name")?,
+                table: key_rows.text(row, "table_name")?,
+                columns: key_rows.list(row, "columns"),
+                referenced_schema: key_rows.text(row, "ref_schema")?,
+                referenced_table: key_rows.text(row, "ref_table")?,
+                referenced_columns: key_rows.list(row, "ref_columns"),
+            })
+        })
+        .collect();
+
+    Ok(SchemaGraph {
+        schema: schema.to_string(),
+        tables,
         foreign_keys,
     })
 }

@@ -310,6 +310,52 @@ async fn introspects_the_catalog() {
         .await
         .unwrap();
     assert_eq!(view.kind, catalog::RelationKind::View);
+
+    assert_eq!(customers.referenced_by.len(), 1);
+    assert_eq!(customers.referenced_by[0].table, "orders");
+    assert_eq!(customers.referenced_by[0].columns, vec!["customer_id"]);
+    assert_eq!(customers.referenced_by[0].referenced_columns, vec!["id"]);
+    assert!(items.referenced_by.is_empty());
+}
+
+#[tokio::test]
+async fn builds_the_schema_graph() {
+    let Some(session) = session().await else {
+        return;
+    };
+    let graph = catalog::schema_graph(&session, "public").await.unwrap();
+    let names: Vec<&str> = graph.tables.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["audit_log", "customers", "order_items", "orders"]
+    );
+    let items = graph
+        .tables
+        .iter()
+        .find(|t| t.name == "order_items")
+        .unwrap();
+    let keys: Vec<&str> = items
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| c.name.as_str())
+        .collect();
+    assert_eq!(keys, vec!["order_id", "line"]);
+    let edges: Vec<(&str, &str)> = graph
+        .foreign_keys
+        .iter()
+        .map(|k| (k.table.as_str(), k.referenced_table.as_str()))
+        .collect();
+    assert_eq!(
+        edges,
+        vec![("order_items", "orders"), ("orders", "customers")]
+    );
+    assert_eq!(graph.foreign_keys[1].columns, vec!["customer_id"]);
+
+    let empty = catalog::schema_graph(&session, "no_such_schema")
+        .await
+        .unwrap();
+    assert!(empty.tables.is_empty() && empty.foreign_keys.is_empty());
 }
 
 #[tokio::test]

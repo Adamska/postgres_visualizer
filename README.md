@@ -19,7 +19,8 @@ about 12 MB and uses a fraction of the memory of an Electron equivalent.
 make setup      # pnpm install
 make db-up      # sample database at postgres://tablepp:tablepp@localhost:54329/tablepp
 make dev        # run the app with hot reload
-make build      # produce src-tauri/target/release/bundle/macos/Table++.app
+make build      # produce src-tauri/target/release/bundle/macos/Table++.app, signed with your
+                # Apple Development / Developer ID certificate when one is in the keychain
 ```
 
 The front end can also run in a plain browser against an in-memory mock backend, which is handy for
@@ -28,19 +29,36 @@ UI work: `pnpm dev` then open http://localhost:1420 (add `?empty` for the welcom
 ## Features
 
 - **Connections**: saved profiles with colour and group, passwords in the macOS keychain (or a
-  private file in the app folder, see Settings › Passwords), TLS modes, health checks with one-click
-  reconnect when the server stops answering
-  (disabled, required, verify-full), import from `postgresql://` URLs, connection test.
-- **Sidebar**: schemas, tables, views and functions with instant filtering; several connections open
-  side by side.
-- **Table tabs**: paginated rows, sort by header, visual filter builder plus raw `WHERE`, column
-  hiding, row inspector, follow foreign keys, export to CSV / JSON / SQL.
+  private file in the app folder, see Settings › Passwords), TLS modes (disabled, required,
+  verify-full), import from `postgresql://` URLs, connection test, health checks with one-click
+  reconnect when the server stops answering.
+- **Production safety**: mark a connection as production to tint the window, badge its tabs and
+  confirm every write, schema change and commit. Read-only connections open server-side read-only
+  sessions and refuse writes. `UPDATE`/`DELETE` without `WHERE` always asks first.
+- **Command palette** (⌘K): fuzzy search over tables, saved views, saved queries, open tabs,
+  connections, schemas and every command.
+- **Sidebar**: schemas, tables, views and functions with instant filtering, saved views under
+  their table, ER diagram per schema; several connections open side by side.
+- **Table tabs**: paginated rows, sort by header, search across every column (⌘F), visual filter
+  builder plus raw `WHERE`, filters from a cell's menu, saved views, row inspector, form view with
+  related records, export to CSV / JSON / SQL.
+- **Seeing data**: timestamps with a relative hint, colour-tagged UUIDs, enum pills, array chips,
+  colour swatches, grouped digits, image previews on hover; selection statistics (count, sum,
+  average, min, max, distinct); column profiles (nulls, distinct values, histogram, most frequent
+  values); columns can be reordered, resized, hidden and frozen, remembered per table.
+- **Relationships**: hover a foreign key to peek at the referenced row, ⌘-click to follow it in
+  place with back/forward history (⌘[ / ⌘]), and see which rows of other tables point at a row.
 - **Editing**: inline cell edits, NULL / DEFAULT, enum pickers, add, duplicate and delete rows.
   Changes are staged and written in one transaction after a SQL preview. Tables without a primary
   key are read-only.
-- **Query tabs**: CodeMirror editor with PostgreSQL highlighting, schema-aware completion, run the
-  statement under the caret or the whole script, multiple result sets, EXPLAIN / EXPLAIN ANALYZE,
+- **Query tabs**: CodeMirror editor with PostgreSQL highlighting, schema-aware completion, SQL
+  formatting (⌥⌘F), run the statement under the caret or the whole script, multiple result sets,
   history, saved queries, one session per tab so manual transactions stay isolated.
+- **Results**: charts (bar, line, area, scatter), visual EXPLAIN with per-node time, hot spots and
+  warnings, pinned results compared row by row with later runs.
+- **ER diagram**: automatic layout of a schema's tables and foreign keys; pan, zoom, drag, find.
+- **Server**: live sessions from `pg_stat_activity` with cancel and terminate, blocked and idle
+  transactions highlighted; table health (size, dead rows, scans, vacuum) and unused indexes.
 - **Import**: CSV into a table with column mapping, or run a `.sql` file.
 - **Workspace**: open connections and tabs are restored at launch; light and dark themes.
 
@@ -52,11 +70,14 @@ src-tauri/            Rust backend (Tauri commands)
   src/storage.rs      JSON documents in ~/Library/Application Support/Table++, keychain passwords
   tests/              integration tests against the docker database
 src/
-  core/               pure TypeScript: SQL tokenizer/splitter, table queries, staged change sets,
-                      CSV/JSON/SQL exchange, completion engine, connection URLs
+  core/               pure TypeScript: SQL tokenizer/splitter/formatter/safety review, table
+                      queries and saved views, staged change sets, CSV/JSON/SQL exchange,
+                      completion, fuzzy search, value formatting, statistics and column profiles,
+                      EXPLAIN plans, charts, diagram layout, result diffs, server monitoring
   state/              zustand store + actions (connections, tabs, table editing, queries)
-  features/           React views: sidebar, table tab, query tab, grid (Glide Data Grid),
-                      editor (CodeMirror 6), structure, import/export, settings
+  features/           React views: sidebar, palette, table tab, query tab (results, chart, plan),
+                      grid (Glide Data Grid), editor (CodeMirror 6), inspector and related
+                      records, ER diagram, server tab, structure, import/export, settings
   components/ui/      design-system primitives on Radix (menus, dialogs, selects…)
   design/             tokens.css (light/dark) and global styles (Tailwind v4)
 ```

@@ -1,15 +1,16 @@
-import { CheckCircle2, FileUp } from "lucide-react";
-import { useState } from "react";
+import { CheckCircle2, FileUp, Lock, ShieldAlert, TriangleAlert } from "lucide-react";
+import { useMemo, useState } from "react";
 
 import { ErrorBanner } from "@/components/Primitives";
 import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Controls";
 import { Dialog } from "@/components/ui/Overlay";
+import { reviewStatements } from "@/core/sql/safety";
 import { splitStatements, type Statement } from "@/core/sql/splitter";
 import { openTextFile } from "@/lib/files";
 import { toAppError, type AppError } from "@/lib/types";
 import { executeOn, refreshSchemas } from "@/state/actions/connections";
-import { closeDialog } from "@/state/store";
+import { closeDialog, useAppStore } from "@/state/store";
 
 export function RunSqlFileDialog({ connectionId }: { connectionId: string }) {
   const [file, setFile] = useState<{ name: string; statements: Statement[] } | null>(null);
@@ -18,6 +19,18 @@ export function RunSqlFileDialog({ connectionId }: { connectionId: string }) {
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
+  const profile = useAppStore((s) => s.connections[connectionId]?.profile);
+  const production = profile?.environment === "production";
+  const warnings = useMemo(
+    () =>
+      file
+        ? reviewStatements(
+            file.statements.map((st) => st.text),
+            false,
+          )
+        : [],
+    [file],
+  );
 
   const choose = async () => {
     const opened = await openTextFile(["sql", "txt"]);
@@ -61,18 +74,36 @@ export function RunSqlFileDialog({ connectionId }: { connectionId: string }) {
           <Button onClick={closeDialog}>{finished ? "Close" : "Cancel"}</Button>
           {!finished && (
             <Button
-              variant="primary"
-              disabled={!file || file.statements.length === 0}
+              variant={production || warnings.length > 0 ? "danger" : "primary"}
+              disabled={!file || file.statements.length === 0 || profile?.readOnly === true}
               loading={running}
               onClick={() => void run()}
             >
               Run {file ? `${file.statements.length} statements` : ""}
+              {production ? " on production" : ""}
             </Button>
           )}
         </>
       }
     >
       <div className="flex flex-col gap-4 pb-2">
+        {production && (
+          <div className="flex items-center gap-2 rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] font-medium">
+            <ShieldAlert className="size-4 shrink-0 text-danger" /> This connection is a production database.
+          </div>
+        )}
+        {profile?.readOnly && (
+          <div className="flex items-center gap-2 rounded-lg bg-fg/6 px-3 py-2 text-[12.5px]">
+            <Lock className="size-4 shrink-0 text-fg-muted" /> The connection is read-only: scripts cannot
+            run.
+          </div>
+        )}
+        {warnings.map((warning) => (
+          <div key={warning.index} className="flex items-center gap-2 text-[12px] text-warning">
+            <TriangleAlert className="size-3.5 shrink-0" />
+            Statement {warning.index + 1}: {warning.message}
+          </div>
+        ))}
         <div className="flex items-center gap-3">
           <Button icon={<FileUp className="size-4" />} onClick={() => void choose()} disabled={running}>
             Choose file…

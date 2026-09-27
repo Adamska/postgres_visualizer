@@ -6,11 +6,18 @@ import {
   tableKey,
   type Completion,
 } from "@/core/completion/engine";
+import { suggestChart, type ChartSpec } from "@/core/chart/chart";
+import { isProduction } from "@/core/connection/url";
 import { exportRows, type ExportFormat } from "@/core/exchange/export";
+import { parsePlan } from "@/core/explain/plan";
 import { formatDuration, resultSummary } from "@/core/format/values";
+import { formatSql } from "@/core/sql/format";
+import { isReadOnlyStatement, reviewStatements } from "@/core/sql/safety";
 import { classifyStatement, splitStatements, statementAt, type Statement } from "@/core/sql/splitter";
 import { tokenize } from "@/core/sql/tokenizer";
+import { editorFor } from "@/features/editor/registry";
 import type { EditorErrorMarker, RunScope } from "@/features/editor/types";
+import { EMPTY_SELECTION } from "@/features/grid/types";
 import { backend } from "@/lib/backend";
 import {
   toAppError,
@@ -21,8 +28,16 @@ import {
 } from "@/lib/types";
 
 import { useSettings } from "../settings";
-import { findTab, getState, mutateTab, pushToast, type QueryTab } from "../store";
-import { allRelations, connectionParams, loadStructure, noteFailure } from "./connections";
+import {
+  findTab,
+  getState,
+  mutateTab,
+  openDialog,
+  pushToast,
+  type QueryTab,
+  type ResultView,
+} from "../store";
+import { allRelations, connectionParams, loadStructure, noteFailure, READ_ONLY_SQL } from "./connections";
 import { loadPassword } from "./profiles";
 import { recordHistory, saveQuery as storeSavedQuery } from "./storage";
 import { persistWorkspace } from "./workspace";
@@ -84,6 +99,7 @@ async function sessionFor(tab: QueryTab): Promise<string> {
   if (!connection) throw toAppError({ kind: "connection", message: "Not connected." });
   const password = await loadPassword(connection.profile.id);
   const sessionId = await backend().connect(connectionParams(connection.profile, password));
+  if (connection.profile.readOnly) await backend().executeSql(sessionId, READ_ONLY_SQL, null);
   mutateTab(tab.id, "query", (t) => {
     t.sessionId = sessionId;
   });
@@ -93,15 +109,71 @@ async function sessionFor(tab: QueryTab): Promise<string> {
 export function runQuery(tabId: string, scope: RunScope): Promise<void> {
   const tab = findTab(tabId, "query");
   if (!tab || tab.running) return Promise.resolve();
-  return execute(tabId, statementsFor(tab, scope));
+  return runStatements(tabId, statementsFor(tab, scope));
+}
+
+/**
+ * Runs statements after the safety checks: refused on read-only connections when they write,
+ * and confirmed first when they are risky (no WHERE, or writes on production).
+ */
+export function runStatements(tabId: string, statements: Statement[], confirmed = false): Promise<void> {
+  const tab = findTab(tabId, "query");
+  const profile = tab ? getState().connections[tab.connectionId]?.profile : undefined;
+  if (!tab || tab.running || statements.length === 0) return Promise.resolve();
+  if (profile?.readOnly) {
+    const writing = statements.find((s) => !isReadOnlyStatement(s.text));
+    if (writing) {
+      mutateTab(tabId, "query", (t) => {
+        t.error = {
+          kind: "server",
+          message: "This connection is read-only.",
+          detail: `Refused: ${writing.text.split("\n")[0] ?? ""}`,
+          hint: "Turn off “Read-only” in the connection settings to change data.",
+          sqlState: null,
+          position: null,
+        };
+        t.errorMarker = {
+          from: writing.start,
+          to: Math.max(writing.end, writing.start + 1),
+          message: "Read-only connection",
+        };
+      });
+      return Promise.resolve();
+    }
+  }
+  if (!confirmed) {
+    const warnings = reviewStatements(
+      statements.map((s) => s.text),
+      profile ? isProduction(profile) : false,
+    );
+    if (warnings.length > 0) {
+      openDialog({ kind: "confirmRun", tabId, statements, warnings });
+      return Promise.resolve();
+    }
+  }
+  return execute(tabId, statements);
 }
 
 export function explainQuery(tabId: string, analyze: boolean): Promise<void> {
   const tab = findTab(tabId, "query");
   const statement = tab ? statementsFor(tab, "current")[0] : undefined;
   if (!tab || tab.running || !statement) return Promise.resolve();
-  const options = analyze ? "(ANALYZE, BUFFERS, FORMAT TEXT)" : "(FORMAT TEXT)";
-  return execute(tabId, [{ ...statement, text: `EXPLAIN ${options} ${statement.text}` }]);
+  const options = analyze ? "(ANALYZE, BUFFERS, FORMAT JSON)" : "(FORMAT JSON)";
+  return runStatements(tabId, [{ ...statement, text: `EXPLAIN ${options} ${statement.text}` }]);
+}
+
+/** Whether a result is the JSON output of EXPLAIN. */
+export function isPlanResult(result: QueryResult | undefined): boolean {
+  if (result?.columns.length !== 1 || result.columns[0]?.name !== "QUERY PLAN") return false;
+  const text = result.rows.map((row) => row[0] ?? "").join("\n");
+  return text.trimStart().startsWith("[") && parsePlan(text) !== null;
+}
+
+/** The view a fresh result opens in, given the one in use. */
+export function viewForResult(result: QueryResult | undefined, current: ResultView): ResultView {
+  if (isPlanResult(result)) return "plan";
+  if (current === "chart" && result && suggestChart(result.columns)) return "chart";
+  return "grid";
 }
 
 /** Runs a statement that is not part of the editor, such as COMMIT from the toolbar. */
@@ -174,7 +246,10 @@ async function execute(tabId: string, statements: Statement[]): Promise<void> {
     t.selectedResult = Math.max(0, collected.length - 1);
     t.version += 1;
     t.running = false;
-    t.gridSelection = { rows: [], focused: null };
+    t.gridSelection = EMPTY_SELECTION;
+    t.chart = null;
+    t.compare = null;
+    t.resultView = viewForResult(collected.at(-1), t.resultView);
     if (!failure) {
       const last = collected.at(-1);
       t.status =
@@ -237,8 +312,81 @@ export function selectResult(tabId: string, index: number): void {
   mutateTab(tabId, "query", (t) => {
     t.selectedResult = index;
     t.version += 1;
-    t.gridSelection = { rows: [], focused: null };
+    t.gridSelection = EMPTY_SELECTION;
+    t.chart = null;
+    t.resultView = viewForResult(t.results[index], t.resultView);
   });
+}
+
+export function setResultView(tabId: string, view: ResultView): void {
+  mutateTab(tabId, "query", (t) => {
+    t.resultView = view;
+  });
+}
+
+export function setChart(tabId: string, chart: ChartSpec): void {
+  mutateTab(tabId, "query", (t) => {
+    t.chart = chart;
+  });
+}
+
+export function setFrozenColumns(tabId: string, count: number): void {
+  mutateTab(tabId, "query", (t) => {
+    t.frozenColumns = Math.max(0, count);
+  });
+}
+
+/** Most pinned results kept per tab. */
+export const PIN_LIMIT = 5;
+
+/** Keeps the selected result aside to compare later runs against it. */
+export function pinResult(tabId: string): void {
+  const tab = findTab(tabId, "query");
+  const result = tab?.results[tab.selectedResult];
+  if (!tab || !result) return;
+  const now = new Date();
+  const label = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")} · ${result.rows.length} rows`;
+  mutateTab(tabId, "query", (t) => {
+    t.pinned = [
+      ...t.pinned,
+      { id: crypto.randomUUID(), label, sql: t.text, result, pinnedAt: now.toISOString() },
+    ].slice(-PIN_LIMIT);
+  });
+}
+
+export function unpinResult(tabId: string, id: string): void {
+  mutateTab(tabId, "query", (t) => {
+    t.pinned = t.pinned.filter((p) => p.id !== id);
+    if (t.compare?.pinnedId === id) t.compare = null;
+  });
+}
+
+/** Compares the selected result with a pinned one (or stops comparing with `null`). */
+export function setCompare(tabId: string, pinnedId: string | null, keyColumns: string[] = []): void {
+  mutateTab(tabId, "query", (t) => {
+    t.compare = pinnedId === null ? null : { pinnedId, keyColumns };
+    if (pinnedId !== null) t.resultView = "grid";
+    t.version += 1;
+  });
+}
+
+/** Formats the selection, or the whole script when nothing is selected. */
+export function formatQuery(tabId: string): void {
+  const tab = findTab(tabId, "query");
+  if (!tab) return;
+  const from = Math.min(tab.selection.anchor, tab.selection.head);
+  const to = Math.max(tab.selection.anchor, tab.selection.head);
+  const [start, end] = to > from ? [from, to] : [0, tab.text.length];
+  let formatted: string;
+  try {
+    formatted = formatSql(tab.text.slice(start, end));
+  } catch (error) {
+    pushToast({ tone: "error", title: "Could not format the SQL", message: toAppError(error).message });
+    return;
+  }
+  const editor = editorFor(tabId);
+  if (editor) editor.replaceRange(start, end, formatted);
+  else setQueryText(tabId, tab.text.slice(0, start) + formatted + tab.text.slice(end));
 }
 
 /** Completion provider for the editor, using the connection's schema cache. */

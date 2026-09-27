@@ -8,6 +8,7 @@ import type {
   PasswordStorage,
   QueryResult,
   RelationInfo,
+  SchemaGraph,
   SchemaInfo,
   TableStructure,
 } from "./types";
@@ -26,6 +27,7 @@ export interface Backend {
   listRelations(sessionId: string, schema: string): Promise<RelationInfo[]>;
   listFunctions(sessionId: string, schema: string): Promise<FunctionInfo[]>;
   tableStructure(sessionId: string, schema: string, name: string): Promise<TableStructure>;
+  schemaGraph(sessionId: string, schema: string): Promise<SchemaGraph>;
   loadDocument<T>(name: string): Promise<T | null>;
   saveDocument(name: string, value: unknown): Promise<void>;
   getPassword(profileId: string, storage: PasswordStorage): Promise<string | null>;
@@ -45,6 +47,7 @@ const tauriBackend: Backend = {
   listRelations: (sessionId, schema) => invoke("list_relations", { sessionId, schema }),
   listFunctions: (sessionId, schema) => invoke("list_functions", { sessionId, schema }),
   tableStructure: (sessionId, schema, name) => invoke("table_structure", { sessionId, schema, name }),
+  schemaGraph: (sessionId, schema) => invoke("schema_graph", { sessionId, schema }),
   loadDocument: <T>(name: string) => invoke<T | null>("load_document", { name }),
   saveDocument: (name, value) => invoke("save_document", { name, value }),
   getPassword: (profileId, storage) => invoke("get_password", { profileId, storage }),

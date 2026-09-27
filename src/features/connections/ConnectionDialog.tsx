@@ -4,12 +4,18 @@ import { useEffect, useState } from "react";
 import { ColorDot } from "@/components/Primitives";
 import { PROFILE_COLORS } from "@/lib/colors";
 import { Button, Spinner } from "@/components/ui/Button";
-import { Select } from "@/components/ui/Controls";
+import { Select, Switch } from "@/components/ui/Controls";
 import { Field, Input } from "@/components/ui/Input";
 import { Dialog } from "@/components/ui/Overlay";
 import { newProfile, parseConnectionUrl, profileIssues } from "@/core/connection/url";
 import { backend } from "@/lib/backend";
-import { toAppError, type ConnectionProfile, type ProfileColor, type SslMode } from "@/lib/types";
+import {
+  toAppError,
+  type ConnectionEnvironment,
+  type ConnectionProfile,
+  type ProfileColor,
+  type SslMode,
+} from "@/lib/types";
 import { connect, connectionParams } from "@/state/actions/connections";
 import { deleteProfile, loadPassword, saveProfile } from "@/state/actions/profiles";
 import { closeDialog, useAppStore } from "@/state/store";
@@ -24,6 +30,13 @@ const SSL_OPTIONS: { value: SslMode; label: string }[] = [
   { value: "disable", label: "Disabled" },
   { value: "require", label: "Required (no verification)" },
   { value: "verify-full", label: "Verify full" },
+];
+
+const ENVIRONMENT_OPTIONS: { value: ConnectionEnvironment; label: string }[] = [
+  { value: "none", label: "Not set" },
+  { value: "development", label: "Development" },
+  { value: "staging", label: "Staging" },
+  { value: "production", label: "Production" },
 ];
 
 const COLOR_OPTIONS = (Object.keys(PROFILE_COLORS) as ProfileColor[]).map((color) => ({
@@ -142,6 +155,37 @@ export function ConnectionDialog({ profileId }: { profileId: string | null }) {
             placeholder="Production"
           />
         </Field>
+        <div className="grid grid-cols-[1fr_1fr] items-end gap-3">
+          <Field
+            label="Environment"
+            hint={
+              profile.environment === "production"
+                ? "Tinted window, and every write asks for confirmation."
+                : "Production connections get a tinted window and confirmations."
+            }
+          >
+            <Select
+              value={profile.environment}
+              onChange={(environment) =>
+                patch({
+                  environment,
+                  // A production connection with no colour gets red, so it stands out at once.
+                  color: environment === "production" && profile.color === "none" ? "red" : profile.color,
+                })
+              }
+              options={ENVIRONMENT_OPTIONS}
+              ariaLabel="Environment"
+            />
+          </Field>
+          <div className="pb-5">
+            <Switch
+              checked={profile.readOnly}
+              onChange={(readOnly) => patch({ readOnly })}
+              label="Read-only"
+              description="Sessions refuse writes; applies on connect."
+            />
+          </div>
+        </div>
         <div className="my-1 h-px bg-line" />
         <div className="grid grid-cols-[1fr_110px] gap-3">
           <Field label="Host">

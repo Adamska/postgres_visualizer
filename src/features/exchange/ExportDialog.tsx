@@ -19,7 +19,7 @@ export function ExportDialog({ tabId }: { tabId: string }) {
         ? tab.gridSelection.rows.length
         : 0;
   const [selectionOnly, setSelectionOnly] = useState(selectedCount > 0);
-  if (!tab || tab.kind === "structure") return null;
+  if (tab?.kind !== "table" && tab?.kind !== "query") return null;
 
   const render = () =>
     tab.kind === "table"

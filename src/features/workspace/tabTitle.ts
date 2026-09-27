@@ -12,5 +12,9 @@ export function tabTitle(tab: Tab): string {
       return displayName(tab.table);
     case "query":
       return queryTitle(tab);
+    case "diagram":
+      return `${tab.schema} diagram`;
+    case "server":
+      return tab.pane === "activity" ? "Server activity" : "Server health";
   }
 }

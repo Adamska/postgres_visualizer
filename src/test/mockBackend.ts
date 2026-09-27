@@ -6,6 +6,7 @@ import type {
   FunctionInfo,
   QueryResult,
   RelationInfo,
+  SchemaGraph,
   SchemaInfo,
   TableStructure,
 } from "@/lib/types";
@@ -108,6 +109,85 @@ export const USERS_STRUCTURE: TableStructure = {
       referencedColumns: ["id"],
     },
   ],
+  referencedBy: [
+    {
+      name: "orders_user_fk",
+      schema: "public",
+      table: "orders",
+      columns: ["user_id"],
+      referencedColumns: ["id"],
+    },
+  ],
+};
+
+export const TEAMS_STRUCTURE: TableStructure = {
+  schema: "public",
+  name: "teams",
+  kind: "table",
+  comment: null,
+  columns: [
+    { ...USERS_STRUCTURE.columns[0]!, name: "id" },
+    { ...USERS_STRUCTURE.columns[1]!, name: "name", ordinal: 2 },
+  ],
+  indexes: [],
+  constraints: [],
+  foreignKeys: [],
+  referencedBy: [
+    {
+      name: "users_team_fk",
+      schema: "public",
+      table: "users",
+      columns: ["team_id"],
+      referencedColumns: ["id"],
+    },
+  ],
+};
+
+export const TEAMS_RESULT: QueryResult = {
+  columns: [
+    { name: "id", typeOid: 23, typeName: "integer", kind: "integer" },
+    { name: "name", typeOid: 25, typeName: "text", kind: "text" },
+  ],
+  rows: [["1", "Core"]],
+  affectedRows: null,
+  durationMs: 1,
+  truncated: false,
+};
+
+export const PUBLIC_GRAPH: SchemaGraph = {
+  schema: "public",
+  tables: [
+    {
+      name: "teams",
+      kind: "table",
+      estimatedRows: 1,
+      columns: [
+        { name: "id", typeName: "integer", isPrimaryKey: true, isNullable: false },
+        { name: "name", typeName: "text", isPrimaryKey: false, isNullable: false },
+      ],
+    },
+    {
+      name: "users",
+      kind: "table",
+      estimatedRows: 3,
+      columns: USERS_STRUCTURE.columns.map((c) => ({
+        name: c.name,
+        typeName: c.typeName,
+        isPrimaryKey: c.isPrimaryKey,
+        isNullable: c.isNullable,
+      })),
+    },
+  ],
+  foreignKeys: [
+    {
+      name: "users_team_fk",
+      table: "users",
+      columns: ["team_id"],
+      referencedSchema: "public",
+      referencedTable: "teams",
+      referencedColumns: ["id"],
+    },
+  ],
 };
 
 export const USERS_RESULT: QueryResult = {
@@ -137,6 +217,8 @@ export interface MockOptions {
   connectError?: AppError;
   executeError?: AppError;
   results?: Record<string, QueryResult>;
+  /** Answers statements not covered by `results`, before the built-in defaults. */
+  resolve?: (sql: string) => QueryResult | undefined;
 }
 
 export interface MockBackend extends Backend {
@@ -149,6 +231,8 @@ export interface MockBackend extends Backend {
   closed: string[];
   /** Answer of `ping`; flip it to simulate a lost server. */
   alive: boolean;
+  /** Extra statement answers, replaceable after creation (previews). */
+  resolve: ((sql: string) => QueryResult | undefined) | undefined;
 }
 
 export function createMockBackend(options: MockOptions = {}): MockBackend {
@@ -180,6 +264,7 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     sessions: [],
     closed: [],
     alive: true,
+    resolve: options.resolve,
     connect: (params) => {
       if (options.connectError) return Promise.reject(options.connectError);
       if (!mock.alive) {
@@ -229,8 +314,9 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
         };
         return Promise.reject(error);
       }
-      const custom = options.results?.[sql];
+      const custom = options.results?.[sql] ?? mock.resolve?.(sql);
       if (custom) return Promise.resolve(custom);
+      if (sql.includes(`FROM "public"."teams"`)) return Promise.resolve(TEAMS_RESULT);
       if (sql.startsWith("SELECT count(*)")) {
         return Promise.resolve({
           columns: [{ name: "count", typeOid: 20, typeName: "int8", kind: "integer" }],
@@ -268,8 +354,15 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
     listFunctions: (_s, schema) => Promise.resolve(functions.filter((f) => f.schema === schema)),
     tableStructure: (_s, schema, name) => {
       if (schema === "public" && name === "users") return Promise.resolve(USERS_STRUCTURE);
+      if (schema === "public" && name === "teams") return Promise.resolve(TEAMS_STRUCTURE);
       if (schema === "public" && name === "active_users") {
-        return Promise.resolve({ ...USERS_STRUCTURE, name: "active_users", kind: "view", foreignKeys: [] });
+        return Promise.resolve({
+          ...USERS_STRUCTURE,
+          name: "active_users",
+          kind: "view",
+          foreignKeys: [],
+          referencedBy: [],
+        });
       }
       const error: AppError = {
         kind: "server",
@@ -281,6 +374,8 @@ export function createMockBackend(options: MockOptions = {}): MockBackend {
       };
       return Promise.reject(error);
     },
+    schemaGraph: (_s, schema) =>
+      Promise.resolve(schema === "public" ? PUBLIC_GRAPH : { schema, tables: [], foreignKeys: [] }),
     loadDocument: <T>(name: string) => Promise.resolve((mock.documents[name] as T | undefined) ?? null),
     saveDocument: (name, value) => {
       mock.documents[name] = JSON.parse(JSON.stringify(value)) as unknown;

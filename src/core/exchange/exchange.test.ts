@@ -96,6 +96,7 @@ describe("import plan", () => {
     indexes: [],
     constraints: [],
     foreignKeys: [],
+    referencedBy: [],
   };
 
   it("maps automatically and batches", () => {

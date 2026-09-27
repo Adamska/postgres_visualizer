@@ -1,21 +1,41 @@
 // Tabs: opening, closing, ordering and persisting the workspace across launches.
 
 import { emptyChangeSet } from "@/core/changes/changeSet";
-import { hasActiveFilters, newTableQuery, type Filter, type TableQuery } from "@/core/query/tableQuery";
+import type { Point } from "@/core/diagram/layout";
+import {
+  hasActiveFilters,
+  newTableQuery,
+  normalizeTableQuery,
+  type Filter,
+  type TableQuery,
+} from "@/core/query/tableQuery";
 import { sameTable } from "@/core/sql/quote";
 import { backend } from "@/lib/backend";
 import type { TableRef } from "@/lib/types";
 
 import { useSettings } from "../settings";
-import { getState, mutate, type QueryTab, type StructureTab, type Tab, type TableTab } from "../store";
+import {
+  getState,
+  mutate,
+  type DiagramTab,
+  type QueryTab,
+  type ServerPane,
+  type ServerTab,
+  type StructureTab,
+  type Tab,
+  type TableTab,
+} from "../store";
 import { connect } from "./connections";
+import { storedLayout } from "./layouts";
 
 const DOCUMENT = "workspace";
 
 type TabSnapshot =
   | { kind: "table"; query: TableQuery }
   | { kind: "structure"; table: TableRef }
-  | { kind: "query"; sql: string; title: string | null };
+  | { kind: "query"; sql: string; title: string | null }
+  | { kind: "diagram"; schema: string; positions?: Record<string, Point> }
+  | { kind: "server"; pane: ServerPane };
 
 interface WorkspaceSnapshot {
   connections: { profileId: string; tabs: TabSnapshot[]; activeIndex: number | null }[];
@@ -33,12 +53,14 @@ function insertTab(tab: Tab): void {
   persistWorkspace();
 }
 
-function makeTableTab(connectionId: string, query: TableQuery): TableTab {
+export function makeTableTab(connectionId: string, query: TableQuery): TableTab {
   return {
     id: crypto.randomUUID(),
     kind: "table",
     connectionId,
     query,
+    history: { back: [], forward: [] },
+    viewMode: "grid",
     structure: null,
     result: null,
     totalCount: null,
@@ -46,9 +68,9 @@ function makeTableTab(connectionId: string, query: TableQuery): TableTab {
     committing: false,
     error: null,
     changes: emptyChangeSet(),
-    hiddenColumnIds: [],
-    selection: { rows: [], focused: null },
-    filterBarVisible: hasActiveFilters(query),
+    layout: storedLayout(connectionId, query.table),
+    selection: { rows: [], focused: null, range: null },
+    filterBarVisible: query.filters.length > 0 || query.rawWhere.trim() !== "",
     version: 0,
     focusRequest: null,
   };
@@ -71,8 +93,13 @@ function makeQueryTab(connectionId: string, text: string, title: string | null):
     inTransaction: false,
     sessionId: null,
     hiddenColumnIds: [],
-    gridSelection: { rows: [], focused: null },
+    frozenColumns: 0,
+    gridSelection: { rows: [], focused: null, range: null },
     version: 0,
+    resultView: "grid",
+    chart: null,
+    pinned: [],
+    compare: null,
   };
 }
 
@@ -85,6 +112,41 @@ function makeStructureTab(connectionId: string, table: TableRef): StructureTab {
     structure: null,
     error: null,
     loading: false,
+  };
+}
+
+function makeDiagramTab(
+  connectionId: string,
+  schema: string,
+  positions: Record<string, Point> = {},
+): DiagramTab {
+  return {
+    id: crypto.randomUUID(),
+    kind: "diagram",
+    connectionId,
+    schema,
+    graph: null,
+    loading: false,
+    error: null,
+    positions,
+  };
+}
+
+function makeServerTab(connectionId: string, pane: ServerPane): ServerTab {
+  return {
+    id: crypto.randomUUID(),
+    kind: "server",
+    connectionId,
+    pane,
+    activity: null,
+    tables: null,
+    indexes: null,
+    loading: false,
+    error: null,
+    paused: false,
+    showIdle: true,
+    showBackground: false,
+    refreshedAt: null,
   };
 }
 
@@ -109,10 +171,15 @@ export function openTable(
       return existing.id;
     }
   }
-  const tab = makeTableTab(
+  return insertTableTab(
     connectionId,
     newTableQuery(table, useSettings.getState().settings.pageSize, filters),
   );
+}
+
+/** Opens a new table tab showing a query. */
+export function insertTableTab(connectionId: string, query: TableQuery): string {
+  const tab = makeTableTab(connectionId, query);
   insertTab(tab);
   return tab.id;
 }
@@ -126,6 +193,36 @@ export function openStructure(connectionId: string, table: TableRef): string {
     return existing.id;
   }
   const tab = makeStructureTab(connectionId, table);
+  insertTab(tab);
+  return tab.id;
+}
+
+/** Opens (or focuses) the ER diagram of a schema. */
+export function openDiagram(connectionId: string, schema: string): string {
+  const existing = getState().tabs.find(
+    (t) => t.kind === "diagram" && t.connectionId === connectionId && t.schema === schema,
+  );
+  if (existing) {
+    selectTab(existing.id);
+    return existing.id;
+  }
+  const tab = makeDiagramTab(connectionId, schema);
+  insertTab(tab);
+  return tab.id;
+}
+
+/** Opens (or focuses) the server tab of a connection on the given pane. */
+export function openServer(connectionId: string, pane: ServerPane = "activity"): string {
+  const existing = getState().tabs.find((t) => t.kind === "server" && t.connectionId === connectionId);
+  if (existing) {
+    mutate((draft) => {
+      const tab = draft.tabs.find((t) => t.id === existing.id);
+      if (tab?.kind === "server") tab.pane = pane;
+    });
+    selectTab(existing.id);
+    return existing.id;
+  }
+  const tab = makeServerTab(connectionId, pane);
   insertTab(tab);
   return tab.id;
 }
@@ -223,6 +320,10 @@ export function snapshotTab(tab: Tab): TabSnapshot {
       return { kind: "structure", table: tab.table };
     case "query":
       return { kind: "query", sql: tab.text, title: tab.customTitle };
+    case "diagram":
+      return { kind: "diagram", schema: tab.schema, positions: tab.positions };
+    case "server":
+      return { kind: "server", pane: tab.pane };
   }
 }
 
@@ -284,11 +385,15 @@ export async function restoreWorkspace(): Promise<void> {
     const restored: Tab[] = entry.tabs.map((tab) => {
       switch (tab.kind) {
         case "table":
-          return makeTableTab(profile.id, tab.query);
+          return makeTableTab(profile.id, normalizeTableQuery(tab.query));
         case "structure":
           return makeStructureTab(profile.id, tab.table);
         case "query":
           return makeQueryTab(profile.id, tab.sql, tab.title);
+        case "diagram":
+          return makeDiagramTab(profile.id, tab.schema, tab.positions);
+        case "server":
+          return makeServerTab(profile.id, tab.pane);
       }
     });
     mutate((draft) => {
